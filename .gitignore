@@ -1,0 +1,41 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+*.egg-info/
+AGENTS.md
+
+# Secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.local.yaml
+*.local.yml
+
+# Test coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Runtime logs and temporary files
+logs/
+*.log
+tmp/
+temp/
+
+# Local camera captures and recordings
+captures/
+recordings/
+*.h264
+
+# IDE-specific state
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
