@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from struct import unpack
 from types import TracebackType
 from typing import Protocol, cast
 
 MSP_API_VERSION = 1
+MSP_ATTITUDE = 108
 MSP_REQUEST_HEADER = b"$M<"
 MSP_RESPONSE_HEADER = b"$M>"
 MSP_ERROR_HEADER = b"$M!"
@@ -67,6 +69,15 @@ class ApiVersion:
     @property
     def api(self) -> str:
         return f"{self.major}.{self.minor}"
+
+
+@dataclass(frozen=True)
+class Attitude:
+    """Flight-controller attitude angles expressed in degrees."""
+
+    roll: float
+    pitch: float
+    yaw: float
 
 
 def xor_checksum(data: bytes) -> int:
@@ -199,3 +210,19 @@ class MspClient:
             )
         protocol, major, minor = response.payload
         return ApiVersion(protocol=protocol, major=major, minor=minor)
+
+    def attitude(self) -> Attitude:
+        """Read roll, pitch, and yaw angles from Betaflight."""
+        response = self.request(MSP_ATTITUDE)
+        if len(response.payload) != 6:
+            raise MspFrameError(
+                "MSP_ATTITUDE payload must contain exactly 6 bytes, "
+                f"received {len(response.payload)}"
+            )
+
+        roll_decidegrees, pitch_decidegrees, yaw_degrees = unpack("<hhh", response.payload)
+        return Attitude(
+            roll=roll_decidegrees / 10.0,
+            pitch=pitch_decidegrees / 10.0,
+            yaw=float(yaw_degrees),
+        )

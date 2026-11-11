@@ -84,11 +84,11 @@ Optional arguments:
 robot-capture-image --camera-index 0 --warmup-frames 30
 ```
 
-## Read the Betaflight MSP API version
+## Read Betaflight telemetry
 
-The current MSP client intentionally supports only the read-only
-`MSP_API_VERSION` command. On the Raspberry Pi, with UART3 already configured
-for MSP in Betaflight, run:
+The MSP client supports the read-only `MSP_API_VERSION` and `MSP_ATTITUDE`
+commands. On the Raspberry Pi, with UART3 already configured for MSP in
+Betaflight, read the API version with:
 
 ```bash
 uv run --locked uav-msp --port /dev/ttyAMA0 --command api-version
@@ -99,6 +99,26 @@ Expected output for the currently tested Betaflight 4.4.3 controller:
 ```text
 MSP API: 1.45 (protocol version 0)
 ```
+
+Read attitude once:
+
+```bash
+uv run --locked uav-msp --port /dev/ttyAMA0 --command attitude
+```
+
+Continuously poll attitude every 250 milliseconds until Ctrl+C:
+
+```bash
+uv run --locked uav-msp \
+  --port /dev/ttyAMA0 \
+  --command attitude \
+  --watch \
+  --poll-interval 0.25
+```
+
+Betaflight 4.4.3 returns a six-byte attitude payload: signed little-endian
+16-bit roll and pitch in tenths of a degree, followed by signed little-endian
+16-bit yaw in whole degrees. The CLI converts all three values to degrees.
 
 The command defaults to 115200 baud and a two-second timeout. It does not arm
 the controller, control motors, modify Betaflight configuration, or write to
@@ -118,9 +138,9 @@ file with `uv lock` and commit both files.
 
 ## Next increments
 
-First, smoke-test the MSP CLI on the Raspberry Pi and confirm API version 1.45.
-After that result is reviewed, additional read-only telemetry commands can be
-added one at a time. Raspberry Pi Camera Module 3 capture remains a separate
-future increment; the detection algorithm must remain independent from
-Picamera2 and serial communication.
+The API-version CLI has passed its Raspberry Pi hardware smoke test. Next,
+smoke-test one-shot and watched attitude reads, then add further read-only
+telemetry commands one at a time. Raspberry Pi Camera Module 3 capture remains
+a separate future increment; the detection algorithm must remain independent
+from Picamera2 and serial communication.
 

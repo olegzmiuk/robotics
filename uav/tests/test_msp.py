@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from struct import pack
 
 import pytest
 from uav.msp import (
     MSP_API_VERSION,
+    MSP_ATTITUDE,
     ApiVersion,
+    Attitude,
     MspClient,
     MspCommandError,
     MspFrameError,
@@ -137,3 +140,30 @@ def test_api_version_requires_exact_payload_length() -> None:
 
     with pytest.raises(MspFrameError, match="exactly 3"):
         MspClient(serial).api_version()
+
+
+@pytest.mark.parametrize(
+    ("raw_angles", "expected"),
+    [
+        ((123, 456, 270), Attitude(roll=12.3, pitch=45.6, yaw=270.0)),
+        ((-123, -456, -30), Attitude(roll=-12.3, pitch=-45.6, yaw=-30.0)),
+        ((0, 0, 0), Attitude(roll=0.0, pitch=0.0, yaw=0.0)),
+    ],
+)
+def test_decodes_attitude_values(
+    raw_angles: tuple[int, int, int],
+    expected: Attitude,
+) -> None:
+    payload = pack("<hhh", *raw_angles)
+    serial = FakeSerial([response_frame(MSP_ATTITUDE, payload)])
+
+    assert MspClient(serial).attitude() == expected
+    assert serial.writes == [encode_request(MSP_ATTITUDE)]
+
+
+@pytest.mark.parametrize("payload", [b"", b"\x00" * 5, b"\x00" * 7])
+def test_attitude_requires_exact_payload_length(payload: bytes) -> None:
+    serial = FakeSerial([response_frame(MSP_ATTITUDE, payload)])
+
+    with pytest.raises(MspFrameError, match="exactly 6"):
+        MspClient(serial).attitude()
