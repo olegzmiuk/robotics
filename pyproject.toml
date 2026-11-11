@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",
     "opencv-python>=4.8",
+    "pyserial>=3.5",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +24,7 @@ dev = [
 [project.scripts]
 robot-detect-square = "uav.cli:main"
 robot-capture-image = "uav.capture:main"
+uav-msp = "uav.msp_cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "uav/src"}

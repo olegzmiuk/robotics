@@ -1,8 +1,8 @@
 # UAV vision prototype
 
-An educational Python project that detects a black square in a static image.
-The Raspberry Pi and live camera will be added in the next increment, after the
-static-image flow is understood and verified.
+An educational Python project for UAV computer vision and read-only Betaflight
+telemetry. It detects a black square in an image and includes a minimal MSP v1
+client for querying the flight controller over UART.
 
 ## Project structure
 
@@ -14,10 +14,14 @@ static-image flow is understood and verified.
 │   │       ├── __init__.py
 │   │       ├── capture.py           # capture one local webcam frame
 │   │       ├── square_detection.py  # detection algorithm and result models
-│   │       └── cli.py               # file I/O and CLI arguments
+│   │       ├── cli.py               # image file I/O and CLI arguments
+│   │       ├── msp.py               # MSP v1 framing, transport, and API model
+│   │       └── msp_cli.py           # read-only Betaflight CLI
 │   ├── tests/
 │   │   ├── test_capture.py
 │   │   ├── test_cli.py
+│   │   ├── test_msp.py
+│   │   ├── test_msp_cli.py
 │   │   └── test_square_detection.py
 │   └── artifacts/                  # local input and generated images
 └── pyproject.toml           # dependencies and tool configuration
@@ -80,6 +84,26 @@ Optional arguments:
 robot-capture-image --camera-index 0 --warmup-frames 30
 ```
 
+## Read the Betaflight MSP API version
+
+The current MSP client intentionally supports only the read-only
+`MSP_API_VERSION` command. On the Raspberry Pi, with UART3 already configured
+for MSP in Betaflight, run:
+
+```bash
+uv run --locked uav-msp --port /dev/ttyAMA0 --command api-version
+```
+
+Expected output for the currently tested Betaflight 4.4.3 controller:
+
+```text
+MSP API: 1.45 (protocol version 0)
+```
+
+The command defaults to 115200 baud and a two-second timeout. It does not arm
+the controller, control motors, modify Betaflight configuration, or write to
+EEPROM. Bench tests must be performed without propellers.
+
 ## Run the checks
 
 ```bash
@@ -92,9 +116,11 @@ uv run --locked pytest
 After changing dependencies in `pyproject.toml`, deliberately refresh the lock
 file with `uv lock` and commit both files.
 
-## Next increment
+## Next increments
 
-After the static-image code is understood and debugged, add one Raspberry Pi
-camera adapter that provides frames to the same `detect_squares()` function.
-The detection algorithm must remain independent from Picamera2.
+First, smoke-test the MSP CLI on the Raspberry Pi and confirm API version 1.45.
+After that result is reviewed, additional read-only telemetry commands can be
+added one at a time. Raspberry Pi Camera Module 3 capture remains a separate
+future increment; the detection algorithm must remain independent from
+Picamera2 and serial communication.
 
