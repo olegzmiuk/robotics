@@ -12,9 +12,11 @@ static-image flow is understood and verified.
 │   ├── src/
 │   │   └── uav/
 │   │       ├── __init__.py
+│   │       ├── capture.py           # capture one local webcam frame
 │   │       ├── square_detection.py  # detection algorithm and result models
 │   │       └── cli.py               # file I/O and CLI arguments
 │   ├── tests/
+│   │   ├── test_capture.py
 │   │   ├── test_cli.py
 │   │   └── test_square_detection.py
 │   └── artifacts/                  # local input and generated images
@@ -61,6 +63,22 @@ robot-detect-square uav/artifacts/input.jpg
 Generated files use names such as `annotated_14:37:22:184532.jpg`, so
 consecutive runs do not overwrite each other. Passing `--output` explicitly
 still uses the exact path you provide.
+
+### Capture from the MacBook camera
+
+```bash
+robot-capture-image
+```
+
+The first run may cause macOS to ask for camera permission for Terminal or VS
+Code. The command discards 30 warmup frames, processes the next available
+frame, and writes a timestamped annotated image to `uav/artifacts/`.
+
+Optional arguments:
+
+```bash
+robot-capture-image --camera-index 0 --warmup-frames 30
+```
 
 ## Run the checks
 

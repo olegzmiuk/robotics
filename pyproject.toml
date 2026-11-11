@@ -22,6 +22,7 @@ dev = [
 
 [project.scripts]
 robot-detect-square = "uav.cli:main"
+robot-capture-image = "uav.capture:main"
 
 [tool.setuptools]
 package-dir = {"" = "uav/src"}

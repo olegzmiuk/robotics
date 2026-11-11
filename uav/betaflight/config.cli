@@ -1,0 +1,82 @@
+# version
+# Betaflight / STM32F405 (S405) 4.4.3 Nov 18 2023 / 06:49:34 (738127e7e) MSP API: 1.45
+
+# config: YES
+
+# start the command batch
+batch start
+
+# reset configuration to default settings
+defaults nosave
+
+board_name SPEEDYBEEF405V4
+manufacturer_id SPBE
+
+# serial
+serial 0 8192 115200 57600 0 115200
+serial 4 0 115200 57600 0 115200
+
+# vtxtable
+vtxtable bands 8
+vtxtable channels 8
+vtxtable band 1 BAND_A   A CUSTOM  5865 5845 5825 5805 5785 5765 5745 5725
+vtxtable band 2 BAND_B   B CUSTOM  5733 5752 5771 5790 5809 5828 5847 5866
+vtxtable band 3 BAND_E   E CUSTOM  5705 5685 5665 5645 5885 5905 5925 5945
+vtxtable band 4 BAND_F   F CUSTOM  5740 5760 5780 5800 5820 5840 5860 5880
+vtxtable band 5 BAND_R   R CUSTOM  5658 5695 5732 5769 5806 5843 5880 5917
+vtxtable band 6 BAND_H   H CUSTOM  5653 5693 5733 5773 5813 5853 5893 5933
+vtxtable band 7 BAND_L   L CUSTOM  5333 5373 5413 5453 5493 5533 5573 5613
+vtxtable band 8 BAND_X   X CUSTOM  4990 5020 5050 5080 5110 5140 5170 5200
+vtxtable powerlevels 5
+vtxtable powervalues 25 100 200 400 600
+vtxtable powerlabels 25 200 500 1.5 3
+
+# master
+set dyn_notch_count = 1
+set dyn_notch_q = 500
+set serialrx_provider = CRSF
+set dshot_bidir = ON
+set bat_capacity = 8400
+set force_battery_cell_count = 6
+set yaw_motors_reversed = ON
+set osd_cap_alarm = 6000
+set osd_vbat_pos = 2103
+set osd_tim_2_pos = 2081
+set osd_flymode_pos = 2125
+set osd_current_pos = 2166
+set osd_mah_drawn_pos = 2200
+set osd_avg_cell_voltage_pos = 2135
+set osd_disarmed_pos = 2091
+set osd_stat_bitmask = 14252
+set osd_canvas_width = 30
+set osd_canvas_height = 13
+set vtx_band = 5
+set vtx_channel = 7
+set vtx_power = 1
+set vtx_low_power_disarm = ON
+set vtx_freq = 5880
+
+profile 0
+
+profile 1
+
+profile 2
+
+profile 3
+
+# restore original profile selection
+profile 0
+
+rateprofile 0
+
+rateprofile 1
+
+rateprofile 2
+
+rateprofile 3
+
+# restore original rateprofile selection
+rateprofile 0
+
+# save configuration
+save
