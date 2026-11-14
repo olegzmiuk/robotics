@@ -157,6 +157,7 @@ The dashboard is kept separate from the reusable UAV package:
 ```text
 dashboard/frontend  -> React UI
 dashboard/backend   -> FastAPI -> uav.msp -> /dev/ttyAMA0
+                              -> rpicam-vid -> Camera Module 3
 ```
 
 For local frontend development on the MacBook while FastAPI runs on the
@@ -183,16 +184,47 @@ uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
 Then open `http://raspberrypi.local:8000` from the MacBook. Node.js is needed
 only to build the frontend; it is not a second production backend process.
 
+Before starting the dashboard, confirm that Raspberry Pi OS detects the camera:
+
+```bash
+rpicam-hello --list-cameras
+```
+
+If `rpicam-hello` or `rpicam-vid` is missing, install the Raspberry Pi camera
+applications and reboot:
+
+```bash
+sudo apt update
+sudo apt install -y rpicam-apps
+sudo reboot
+```
+
 The first dashboard milestone provides telemetry snapshots, connection and
 error states, an MSP command journal, a shared 10 Hz WebSocket stream, an
-attitude indicator, battery and controller status, and a reserved camera panel.
+attitude indicator, battery and controller status, and a live Camera Module 3
+panel.
 The backend polls MSP only while at least one browser is connected, regardless
 of how many dashboard tabs subscribe. It keeps one serial connection open,
 reads `MSP_API_VERSION` once per connection, reads `MSP_ATTITUDE` at the fast
 stream rate, and refreshes `MSP_STATUS` plus `MSP_ANALOG` once per second. A
 transport or protocol failure closes the serial client and triggers a clean
-reconnect. All API routes are read-only. Camera streaming is not implemented
-yet.
+reconnect. All MSP API routes are read-only.
+
+The camera backend runs one `rpicam-vid` MJPEG process while one or more
+browsers consume `/api/camera/stream`. Capture stops after the last subscriber
+disconnects. Defaults are 1280x720, 15 FPS, JPEG quality 70, camera index 0,
+180-degree rotation for the current upside-down mounting, and continuous
+autofocus. They can be changed without rebuilding:
+
+```bash
+UAV_CAMERA_INDEX=0 \
+UAV_CAMERA_WIDTH=1280 \
+UAV_CAMERA_HEIGHT=720 \
+UAV_CAMERA_FRAMERATE=15 \
+UAV_CAMERA_JPEG_QUALITY=70 \
+UAV_CAMERA_ROTATION=180 \
+uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
+```
 
 The default stream interval is 0.1 seconds. It can be changed when starting the
 backend, with a minimum of 0.05 seconds:
@@ -229,7 +261,8 @@ file with `uv lock` and commit both files.
 ## Next increments
 
 The dashboard and read-only telemetry have passed a Raspberry Pi hardware smoke
-test. The next increment is Raspberry Pi Camera Module 3 capture and dashboard
-streaming; the detection algorithm must remain independent from Picamera2 and
-serial communication.
+test. Live Camera Module 3 dashboard streaming is implemented and awaiting its
+hardware smoke test. After that, the next increment is decoding selected MJPEG
+frames with OpenCV and applying the existing square detector without coupling
+the detection algorithm to camera or serial communication.
 

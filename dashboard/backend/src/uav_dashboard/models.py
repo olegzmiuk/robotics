@@ -75,6 +75,16 @@ class HealthData(FrozenModel):
     serial_port: str
 
 
+class CameraStatusData(FrozenModel):
+    state: Literal["idle", "starting", "streaming", "error"]
+    subscribers: int
+    width: int
+    height: int
+    framerate: int
+    rotation: int
+    error: str | None = None
+
+
 class TelemetryStreamData(FrozenModel):
     """Successful telemetry event sent over the dashboard WebSocket."""
 

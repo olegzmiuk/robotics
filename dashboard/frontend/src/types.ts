@@ -53,6 +53,16 @@ export interface CommandLogEntry {
   error: string | null;
 }
 
+export interface CameraStatusData {
+  state: "idle" | "starting" | "streaming" | "error";
+  subscribers: number;
+  width: number;
+  height: number;
+  framerate: number;
+  rotation: number;
+  error: string | null;
+}
+
 export type TelemetryStreamEvent =
   | { type: "telemetry"; snapshot: TelemetrySnapshot }
   | { type: "error"; message: string };

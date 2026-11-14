@@ -51,19 +51,21 @@ h2 { font-size: 18px; font-weight: 600; }
 .panel-heading { min-height: 68px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 15px 18px; border-bottom: 1px solid var(--line); }
 .camera-panel { min-height: 430px; }
 .camera-viewport { min-height: 360px; height: calc(100% - 68px); position: relative; display: grid; place-items: center; overflow: hidden; background: radial-gradient(circle, rgba(31, 46, 55, .5), transparent 48%), #090f14; }
-.camera-grid { position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(rgba(84,229,209,.17) 1px, transparent 1px), linear-gradient(90deg, rgba(84,229,209,.17) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(circle, black, transparent 80%); }
+.camera-feed { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .2s ease; }
+.camera-feed-ready { opacity: 1; }
+.camera-grid { position: absolute; inset: 0; z-index: 1; opacity: .16; background-image: linear-gradient(rgba(84,229,209,.17) 1px, transparent 1px), linear-gradient(90deg, rgba(84,229,209,.17) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(circle, black, transparent 80%); pointer-events: none; }
 .camera-viewport::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.018) 3px 4px); pointer-events: none; }
-.camera-reticle { width: 86px; height: 86px; border: 1px solid rgba(84,229,209,.25); border-radius: 50%; position: absolute; }
+.camera-reticle { width: 86px; height: 86px; border: 1px solid rgba(84,229,209,.25); border-radius: 50%; position: absolute; z-index: 2; pointer-events: none; }
 .camera-reticle::before, .camera-reticle::after { content: ""; position: absolute; background: rgba(84,229,209,.35); }
 .camera-reticle::before { width: 118px; height: 1px; left: -17px; top: 42px; }
 .camera-reticle::after { width: 1px; height: 118px; left: 42px; top: -17px; }
 .camera-reticle span { position: absolute; width: 4px; height: 4px; left: 40px; top: 40px; background: var(--cyan); border-radius: 50%; box-shadow: 0 0 12px var(--cyan); }
-.camera-message { position: relative; z-index: 2; text-align: center; margin-top: 170px; padding: 14px 22px; background: rgba(8,13,18,.72); backdrop-filter: blur(8px); border-radius: 10px; }
+.camera-message { position: relative; z-index: 3; text-align: center; margin-top: 170px; max-width: min(520px, 85%); padding: 14px 22px; background: rgba(8,13,18,.72); backdrop-filter: blur(8px); border-radius: 10px; }
 .camera-message strong, .camera-message small { display: block; }
 .camera-message strong { font-size: 13px; margin: 5px 0; }
-.camera-message small { color: var(--muted); font-size: 11px; }
+.camera-message small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .camera-icon { color: var(--cyan); }
-.camera-label { position: absolute; left: 16px; bottom: 14px; color: var(--muted); font: 10px "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; }
+.camera-label { position: absolute; left: 16px; bottom: 14px; z-index: 3; color: var(--muted); font: 10px "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; text-shadow: 0 1px 4px #000; }
 
 .attitude-panel { min-height: 430px; }
 .heading-readout { font: 500 12px "SFMono-Regular", Consolas, monospace; color: var(--cyan); }

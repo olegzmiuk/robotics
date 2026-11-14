@@ -1,10 +1,33 @@
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from test_service import FakeClient
 from uav_dashboard.api import create_app
+from uav_dashboard.models import CameraStatusData
 from uav_dashboard.service import TelemetryService
+
+
+class FakeCamera:
+    def __init__(self) -> None:
+        self.stopped = False
+
+    def status(self) -> CameraStatusData:
+        return CameraStatusData(
+            state="streaming",
+            subscribers=1,
+            width=640,
+            height=360,
+            framerate=12,
+            rotation=180,
+        )
+
+    async def stream(self) -> AsyncIterator[bytes]:
+        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\nimage\r\n"
+
+    async def stop(self) -> None:
+        self.stopped = True
 
 
 def test_api_returns_telemetry_and_command_log(tmp_path: Path) -> None:
@@ -35,6 +58,25 @@ def test_api_returns_503_for_serial_failure(tmp_path: Path) -> None:
 
     assert response.status_code == 503
     assert response.json() == {"detail": "status timeout"}
+
+
+def test_api_returns_camera_status_and_mjpeg_stream(tmp_path: Path) -> None:
+    camera = FakeCamera()
+    service = TelemetryService(port="/dev/fake", client_factory=FakeClient)
+
+    with TestClient(
+        create_app(service, camera_service=camera, frontend_dist=tmp_path / "missing")
+    ) as client:
+        status_response = client.get("/api/camera/status")
+        stream_response = client.get("/api/camera/stream")
+
+    assert status_response.status_code == 200
+    assert status_response.json()["state"] == "streaming"
+    assert status_response.json()["width"] == 640
+    assert stream_response.status_code == 200
+    assert stream_response.headers["content-type"].startswith("multipart/x-mixed-replace")
+    assert stream_response.content.endswith(b"image\r\n")
+    assert camera.stopped is True
 
 
 def test_websocket_streams_telemetry(tmp_path: Path) -> None:

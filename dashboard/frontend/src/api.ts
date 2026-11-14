@@ -1,4 +1,4 @@
-import type { CommandLogEntry, TelemetrySnapshot } from "./types";
+import type { CameraStatusData, CommandLogEntry, TelemetrySnapshot } from "./types";
 
 async function getJson<Result>(path: string): Promise<Result> {
   const response = await fetch(path, { headers: { Accept: "application/json" } });
@@ -15,6 +15,10 @@ export function fetchTelemetry(): Promise<TelemetrySnapshot> {
 
 export function fetchCommandLog(): Promise<CommandLogEntry[]> {
   return getJson<CommandLogEntry[]>("/api/commands");
+}
+
+export function fetchCameraStatus(): Promise<CameraStatusData> {
+  return getJson<CameraStatusData>("/api/camera/status");
 }
 
 export function telemetryWebSocketUrl(): string {

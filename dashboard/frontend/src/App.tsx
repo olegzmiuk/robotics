@@ -1,8 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchCommandLog, fetchTelemetry, telemetryWebSocketUrl } from "./api";
-import type { CommandLogEntry, TelemetrySnapshot, TelemetryStreamEvent } from "./types";
+import {
+  fetchCameraStatus,
+  fetchCommandLog,
+  fetchTelemetry,
+  telemetryWebSocketUrl,
+} from "./api";
+import type {
+  CameraStatusData,
+  CommandLogEntry,
+  TelemetrySnapshot,
+  TelemetryStreamEvent,
+} from "./types";
 
 const COMMAND_LOG_INTERVAL_MS = 1_000;
+const CAMERA_STATUS_INTERVAL_MS = 2_000;
+const CAMERA_RETRY_INTERVAL_MS = 2_000;
 const RECONNECT_INTERVAL_MS = 1_000;
 type StreamState = "connecting" | "live" | "offline";
 
@@ -66,7 +78,40 @@ function AttitudeIndicator({ snapshot }: { snapshot: TelemetrySnapshot }) {
   );
 }
 
-function CameraPlaceholder() {
+function CameraPanel() {
+  const [status, setStatus] = useState<CameraStatusData | null>(null);
+  const [streamAttempt, setStreamAttempt] = useState(0);
+  const [imageReady, setImageReady] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    const updateStatus = async () => {
+      try {
+        setStatus(await fetchCameraStatus());
+      } catch {
+        setStatus(null);
+      }
+    };
+    void updateStatus();
+    const timer = window.setInterval(() => void updateStatus(), CAMERA_STATUS_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!imageFailed) return;
+    const timer = window.setTimeout(() => {
+      setImageFailed(false);
+      setStreamAttempt((attempt) => attempt + 1);
+    }, CAMERA_RETRY_INTERVAL_MS);
+    return () => window.clearTimeout(timer);
+  }, [imageFailed]);
+
+  const cameraLive = imageReady || (status?.state === "streaming" && !imageFailed);
+  const stateLabel = cameraLive ? "Live" : status?.state === "error" ? "Unavailable" : "Connecting";
+  const streamDetails = status
+    ? `${status.width}×${status.height} · ${status.framerate} FPS · ${status.rotation}°`
+    : "CAM 01";
+
   return (
     <section className="panel camera-panel">
       <div className="panel-heading camera-heading">
@@ -74,17 +119,33 @@ function CameraPlaceholder() {
           <span className="eyebrow">Computer vision</span>
           <h2>Camera Module 3</h2>
         </div>
-        <span className="badge badge-muted">Not connected</span>
+        <span className={`badge ${cameraLive ? "badge-safe" : "badge-muted"}`}>{stateLabel}</span>
       </div>
       <div className="camera-viewport">
+        <img
+          key={streamAttempt}
+          className={`camera-feed ${cameraLive ? "camera-feed-ready" : ""}`}
+          src={`/api/camera/stream?attempt=${streamAttempt}`}
+          alt="Live Raspberry Pi Camera Module 3 feed"
+          onLoad={() => {
+            setImageReady(true);
+            setImageFailed(false);
+          }}
+          onError={() => {
+            setImageReady(false);
+            setImageFailed(true);
+          }}
+        />
         <div className="camera-grid" />
         <div className="camera-reticle"><span /></div>
-        <div className="camera-message">
-          <span className="camera-icon">◉</span>
-          <strong>Video stream reserved</strong>
-          <small>Picamera2 integration is the next camera milestone</small>
-        </div>
-        <span className="camera-label">CAM 01 · OFFLINE</span>
+        {!cameraLive && (
+          <div className="camera-message">
+            <span className="camera-icon">◉</span>
+            <strong>{status?.state === "error" ? "Camera unavailable" : "Starting camera"}</strong>
+            <small>{status?.error ?? "Waiting for the first MJPEG frame"}</small>
+          </div>
+        )}
+        <span className="camera-label">{streamDetails} · {cameraLive ? "LIVE" : "OFFLINE"}</span>
       </div>
     </section>
   );
@@ -244,7 +305,7 @@ export default function App() {
       </section>
 
       <div className="dashboard-grid">
-        <CameraPlaceholder />
+        <CameraPanel />
         {snapshot ? <AttitudeIndicator snapshot={snapshot} /> : <section className="panel skeleton-panel" />}
 
         <section className="panel power-panel">

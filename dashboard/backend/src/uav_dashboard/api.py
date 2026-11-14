@@ -10,10 +10,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from uav.msp import MspError
 
-from uav_dashboard.models import CommandLogEntry, HealthData, TelemetrySnapshot
+from uav_dashboard.camera import MJPEG_BOUNDARY, CameraService, CameraSource
+from uav_dashboard.models import CameraStatusData, CommandLogEntry, HealthData, TelemetrySnapshot
 from uav_dashboard.service import TelemetryService
 from uav_dashboard.stream import TelemetryBroadcaster
 
@@ -21,6 +23,7 @@ from uav_dashboard.stream import TelemetryBroadcaster
 def create_app(
     telemetry_service: TelemetryService | None = None,
     *,
+    camera_service: CameraSource | None = None,
     frontend_dist: Path | None = None,
 ) -> FastAPI:
     """Create an API app with injectable hardware access for tests."""
@@ -35,6 +38,15 @@ def create_app(
         slow_interval=float(os.getenv("UAV_SLOW_TELEMETRY_INTERVAL", "1.0")),
         reconnect_interval=float(os.getenv("UAV_TELEMETRY_RECONNECT_INTERVAL", "1.0")),
     )
+    camera = camera_service or CameraService(
+        executable=os.getenv("UAV_CAMERA_COMMAND", "rpicam-vid"),
+        camera_index=int(os.getenv("UAV_CAMERA_INDEX", "0")),
+        width=int(os.getenv("UAV_CAMERA_WIDTH", "1280")),
+        height=int(os.getenv("UAV_CAMERA_HEIGHT", "720")),
+        framerate=int(os.getenv("UAV_CAMERA_FRAMERATE", "15")),
+        quality=int(os.getenv("UAV_CAMERA_JPEG_QUALITY", "70")),
+        rotation=int(os.getenv("UAV_CAMERA_ROTATION", "180")),
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -43,9 +55,10 @@ def create_app(
         try:
             yield
         finally:
+            await camera.stop()
             await broadcaster.stop()
 
-    app = FastAPI(title="UAV Dashboard API", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="UAV Dashboard API", version="0.3.0", lifespan=lifespan)
 
     allowed_origins = os.getenv(
         "UAV_DASHBOARD_CORS_ORIGINS",
@@ -77,6 +90,18 @@ def create_app(
     @app.get("/api/commands", response_model=list[CommandLogEntry])
     async def commands() -> list[CommandLogEntry]:
         return service.command_log()
+
+    @app.get("/api/camera/status", response_model=CameraStatusData)
+    async def camera_status() -> CameraStatusData:
+        return camera.status()
+
+    @app.get("/api/camera/stream")
+    async def camera_stream() -> StreamingResponse:
+        return StreamingResponse(
+            camera.stream(),
+            media_type=f"multipart/x-mixed-replace; boundary={MJPEG_BOUNDARY.decode()}",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.websocket("/api/telemetry/ws")
     async def telemetry_stream(websocket: WebSocket) -> None:
