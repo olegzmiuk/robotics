@@ -139,7 +139,7 @@ h2 { font-size: 18px; font-weight: 600; }
 .response-output small { color: #687984; font-size: 10px; }
 .response-simulated_pulse .response-output strong { color: var(--amber); text-shadow: 0 0 18px rgba(241,182,87,.28); }
 .response-fault .response-output strong { color: var(--red); }
-.response-state-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+.response-state-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: var(--line); }
 .response-state-grid .metric { padding: 14px 16px; }
 .response-state-grid .metric-value { font-size: 14px; text-transform: uppercase; }
 .response-reason { padding: 14px 16px; background: rgba(15,23,30,.96); }

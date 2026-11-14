@@ -127,6 +127,8 @@ class VisionResponseStateData(FrozenModel):
     pulse_remaining_ms: float = 0.0
     cooldown_remaining_ms: float = 0.0
     target_latched: bool = False
+    pending_quadrant: Literal["top_left", "top_right", "bottom_left", "bottom_right"] | None = None
+    quadrant_dwell_remaining_ms: float = 0.0
     reason: str
 
 

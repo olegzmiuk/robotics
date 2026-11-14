@@ -363,6 +363,9 @@ function VisionResponsePanel() {
   const output = response?.state === "simulated_pulse" && response.selected_motor
     ? `SIM ${response.selected_motor}`
     : "ZERO";
+  const pendingTransition = response?.pending_quadrant
+    ? `${response.pending_quadrant.replace("_", " ")} · ${Math.round(response.quadrant_dwell_remaining_ms)} ms`
+    : "—";
 
   return (
     <section className={`panel response-panel response-${state}`}>
@@ -396,6 +399,7 @@ function VisionResponsePanel() {
           <Metric label="Pulse remaining" value={Math.round(response?.pulse_remaining_ms ?? 0)} unit="ms" />
           <Metric label="Cooldown" value={Math.round(response?.cooldown_remaining_ms ?? 0)} unit="ms" />
           <Metric label="Target latch" value={response?.target_latched ? "SET" : "CLEAR"} />
+          <Metric label="Pending transition" value={pendingTransition} />
         </div>
         <div className="response-reason">
           <span className="metric-label">Decision reason</span>

@@ -45,6 +45,7 @@ def create_app(
     response_controller = vision_response_controller or VisionResponseController(
         pulse_duration=float(os.getenv("UAV_SIMULATED_PULSE_DURATION", "0.2")),
         cooldown_duration=float(os.getenv("UAV_SIMULATED_PULSE_COOLDOWN", "1.0")),
+        quadrant_dwell=float(os.getenv("UAV_SIMULATED_QUADRANT_DWELL", "0.25")),
     )
     broadcaster = TelemetryBroadcaster(
         service,

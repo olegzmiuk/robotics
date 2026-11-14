@@ -95,6 +95,8 @@ export interface VisionResponseStateData {
   pulse_remaining_ms: number;
   cooldown_remaining_ms: number;
   target_latched: boolean;
+  pending_quadrant: DetectionQuadrant | null;
+  quadrant_dwell_remaining_ms: number;
   reason: string;
 }
 

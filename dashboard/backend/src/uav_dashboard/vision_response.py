@@ -27,6 +27,7 @@ class VisionResponseController:
         *,
         pulse_duration: float = 0.2,
         cooldown_duration: float = 1.0,
+        quadrant_dwell: float = 0.25,
         journal_size: int = 100,
         clock: Callable[[], float] = monotonic,
         now_factory: Callable[[], datetime] | None = None,
@@ -35,11 +36,14 @@ class VisionResponseController:
             raise ValueError("simulated pulse duration must be positive")
         if cooldown_duration <= 0:
             raise ValueError("simulated cooldown duration must be positive")
+        if quadrant_dwell <= 0:
+            raise ValueError("quadrant dwell duration must be positive")
         if journal_size < 1:
             raise ValueError("vision response journal size must be at least 1")
 
         self._pulse_duration = pulse_duration
         self._cooldown_duration = cooldown_duration
+        self._quadrant_dwell = quadrant_dwell
         self._clock = clock
         self._now_factory = now_factory or (lambda: datetime.now(timezone.utc))
         self._journal: deque[VisionResponseLogEntry] = deque(maxlen=journal_size)
@@ -51,6 +55,13 @@ class VisionResponseController:
         )
         self._deadline: float | None = None
         self._target_latched = False
+        self._latched_quadrant: (
+            Literal["top_left", "top_right", "bottom_left", "bottom_right"] | None
+        ) = None
+        self._pending_quadrant: (
+            Literal["top_left", "top_right", "bottom_left", "bottom_right"] | None
+        ) = None
+        self._pending_since: float | None = None
         self._reason = "Simulation disabled"
         self._fault_source: Literal["camera", "uart"] | None = None
         self._telemetry_available = False
@@ -67,7 +78,7 @@ class VisionResponseController:
         self._selected_motor = None
         self._quadrant = None
         self._deadline = None
-        self._target_latched = False
+        self._clear_target_tracking()
         self._fault_source = None
         if enabled:
             if self._telemetry_available:
@@ -95,7 +106,7 @@ class VisionResponseController:
             return
 
         if event.status in ("none", "stale"):
-            self._target_latched = False
+            self._clear_target_tracking()
             if self._enabled and self._state == "simulated_pulse":
                 self._selected_motor = None
                 self._quadrant = None
@@ -110,14 +121,26 @@ class VisionResponseController:
                 self._touch()
             return
 
-        if event.status != "detected" or not self._enabled or self._state != "ready":
+        if event.status != "detected" or event.simulated_motor is None or event.quadrant is None:
             return
-        if self._fault_source is not None or self._target_latched:
+        if not self._enabled or self._fault_source is not None:
             return
-        if event.simulated_motor is None or event.quadrant is None:
+        self._observe_quadrant(event.quadrant, now)
+        if self._state != "ready":
+            return
+
+        transition_ready = (
+            self._pending_quadrant == event.quadrant
+            and self._pending_since is not None
+            and now - self._pending_since >= self._quadrant_dwell
+        )
+        if self._target_latched and not transition_ready:
             return
 
         self._target_latched = True
+        self._latched_quadrant = event.quadrant
+        self._pending_quadrant = None
+        self._pending_since = None
         self._selected_motor = event.simulated_motor
         self._quadrant = event.quadrant
         self._deadline = now + self._pulse_duration
@@ -126,6 +149,19 @@ class VisionResponseController:
             f"Fresh target selected {event.simulated_motor} in {event.quadrant}",
             "pulse_started",
         )
+
+    def _observe_quadrant(
+        self,
+        quadrant: Literal["top_left", "top_right", "bottom_left", "bottom_right"],
+        now: float,
+    ) -> None:
+        if not self._target_latched or quadrant == self._latched_quadrant:
+            self._pending_quadrant = None
+            self._pending_since = None
+            return
+        if quadrant != self._pending_quadrant:
+            self._pending_quadrant = quadrant
+            self._pending_since = now
 
     def observe_telemetry(self, event: TelemetryStreamData | TelemetryStreamError) -> None:
         """Fail closed on UART errors and recover only after fresh telemetry."""
@@ -171,7 +207,7 @@ class VisionResponseController:
         elif self._state == "cooldown":
             self._deadline = None
             reason = (
-                "Cooldown complete; clear the target before another simulation"
+                "Cooldown complete; hold a new quadrant or clear the target"
                 if self._target_latched
                 else "Cooldown complete; waiting for a fresh target"
             )
@@ -180,6 +216,8 @@ class VisionResponseController:
     def _enter_fault(self, source: Literal["camera", "uart"], reason: str) -> None:
         if not self._enabled:
             return
+        self._clear_target_tracking()
+        self._target_latched = True
         self._fault_source = source
         self._selected_motor = None
         self._quadrant = None
@@ -204,15 +242,27 @@ class VisionResponseController:
     def _touch(self) -> None:
         self._updated_at = self._now_factory()
 
+    def _clear_target_tracking(self) -> None:
+        self._target_latched = False
+        self._latched_quadrant = None
+        self._pending_quadrant = None
+        self._pending_since = None
+
     def _snapshot(self, now: float) -> VisionResponseStateData:
         pulse_remaining = 0.0
         cooldown_remaining = 0.0
+        quadrant_dwell_remaining = 0.0
         if self._deadline is not None:
             remaining_ms = round(max(0.0, self._deadline - now) * 1000, 1)
             if self._state == "simulated_pulse":
                 pulse_remaining = remaining_ms
             elif self._state == "cooldown":
                 cooldown_remaining = remaining_ms
+        if self._pending_since is not None:
+            quadrant_dwell_remaining = round(
+                max(0.0, self._quadrant_dwell - (now - self._pending_since)) * 1000,
+                1,
+            )
         return VisionResponseStateData(
             state=self._state,
             enabled=self._enabled,
@@ -222,5 +272,7 @@ class VisionResponseController:
             pulse_remaining_ms=pulse_remaining,
             cooldown_remaining_ms=cooldown_remaining,
             target_latched=self._target_latched,
+            pending_quadrant=self._pending_quadrant,
+            quadrant_dwell_remaining_ms=quadrant_dwell_remaining,
             reason=self._reason,
         )

@@ -248,18 +248,20 @@ changed with `UAV_DETECTION_STALE_TIMEOUT`.
 The `Vision response dry run` panel exercises the next decision layer without
 writing to the flight controller. It is disabled by default and requires an
 explicit dashboard action plus healthy UART telemetry. One fresh target starts
-one 200 ms simulated pulse, then a one-second cooldown; the target must clear
-before another pulse. Holding never starts a pulse, while stale detection,
-camera failure, UART failure, disabling, or camera shutdown clears the selected
-output. Camera shutdown leaves the dry run faulted so the operator must
-explicitly disable and re-enable it after reconnecting. The panel shows the
-current state and a separate decision journal.
+one 200 ms simulated pulse, then a one-second cooldown. Another pulse requires
+the target to clear or remain in a different quadrant for 250 ms. A motor never
+changes during an active pulse. Holding never starts a pulse, while stale
+detection, camera failure, UART failure, disabling, or camera shutdown clears
+the selected output. Camera shutdown leaves the dry run faulted so the operator
+must explicitly disable and re-enable it after reconnecting. The panel shows
+the current state, pending quadrant transition, and a separate decision journal.
 
 The dry-run timings can be adjusted without rebuilding:
 
 ```bash
 UAV_SIMULATED_PULSE_DURATION=0.2 \
 UAV_SIMULATED_PULSE_COOLDOWN=1.0 \
+UAV_SIMULATED_QUADRANT_DWELL=0.25 \
 uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
 ```
 

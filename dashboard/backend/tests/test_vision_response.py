@@ -84,6 +84,39 @@ def test_fresh_target_runs_one_pulse_then_requires_target_clear() -> None:
     assert [entry.event for entry in controller.journal()].count("pulse_started") == 2
 
 
+def test_stable_quadrant_transition_selects_new_motor_after_cooldown() -> None:
+    clock = FakeClock()
+    controller = VisionResponseController(
+        pulse_duration=0.2,
+        cooldown_duration=1.0,
+        quadrant_dwell=0.25,
+        clock=clock,
+    )
+    mark_uart_healthy(controller)
+    controller.set_enabled(True)
+    controller.observe_detection(detection_event())
+
+    clock.advance(0.05)
+    controller.observe_detection(detection_event(motor="M2", quadrant="top_right"))
+    during_first_pulse = controller.snapshot()
+    clock.advance(0.15)
+    cooldown = controller.snapshot()
+    clock.advance(1.0)
+    ready = controller.snapshot()
+    controller.observe_detection(detection_event(motor="M2", quadrant="top_right"))
+    second_pulse = controller.snapshot()
+
+    assert during_first_pulse.state == "simulated_pulse"
+    assert during_first_pulse.selected_motor == "M1"
+    assert during_first_pulse.pending_quadrant == "top_right"
+    assert cooldown.state == "cooldown"
+    assert cooldown.selected_motor is None
+    assert ready.state == "ready"
+    assert second_pulse.state == "simulated_pulse"
+    assert second_pulse.selected_motor == "M2"
+    assert second_pulse.quadrant == "top_right"
+
+
 def test_holding_does_not_start_and_stale_aborts_active_pulse() -> None:
     controller = VisionResponseController()
     mark_uart_healthy(controller)
