@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from struct import unpack
+from enum import IntFlag
+from struct import unpack, unpack_from
 from types import TracebackType
 from typing import Protocol, cast
 
 MSP_API_VERSION = 1
+MSP_STATUS = 101
 MSP_ATTITUDE = 108
+MSP_ANALOG = 110
 MSP_REQUEST_HEADER = b"$M<"
 MSP_RESPONSE_HEADER = b"$M>"
 MSP_ERROR_HEADER = b"$M!"
@@ -78,6 +81,49 @@ class Attitude:
     roll: float
     pitch: float
     yaw: float
+
+
+class Sensor(IntFlag):
+    """Sensor-presence flags returned by MSP_STATUS."""
+
+    ACCELEROMETER = 1 << 0
+    BAROMETER = 1 << 1
+    MAGNETOMETER = 1 << 2
+    GPS = 1 << 3
+    RANGEFINDER = 1 << 4
+    GYROSCOPE = 1 << 5
+
+
+@dataclass(frozen=True)
+class FlightControllerStatus:
+    """Runtime state returned by Betaflight 4.4.3 MSP_STATUS."""
+
+    pid_cycle_time_us: int
+    i2c_error_count: int
+    sensors: Sensor
+    flight_mode_flags: int
+    pid_profile_index: int
+    system_load_percent: int
+    gyro_cycle_time_us: int
+    arming_disable_flag_count: int
+    arming_disable_flags: int
+    configuration_state_flags: int
+
+    @property
+    def reboot_required(self) -> bool:
+        """Return whether Betaflight reports that a reboot is required."""
+        return bool(self.configuration_state_flags & 1)
+
+
+@dataclass(frozen=True)
+class AnalogTelemetry:
+    """Battery and signal telemetry returned by MSP_ANALOG."""
+
+    battery_voltage: float
+    legacy_battery_voltage: float
+    milliamp_hours_drawn: int
+    rssi: int
+    current: float
 
 
 def xor_checksum(data: bytes) -> int:
@@ -211,6 +257,56 @@ class MspClient:
         protocol, major, minor = response.payload
         return ApiVersion(protocol=protocol, major=major, minor=minor)
 
+    def status(self) -> FlightControllerStatus:
+        """Read and decode Betaflight 4.4.3 flight-controller status."""
+        response = self.request(MSP_STATUS)
+        payload = response.payload
+        if len(payload) < 16:
+            raise MspFrameError(
+                f"MSP_STATUS payload must contain at least 16 bytes, received {len(payload)}"
+            )
+
+        extra_mode_byte_count = payload[15] & 0x0F
+        expected_length = 22 + extra_mode_byte_count
+        if len(payload) != expected_length:
+            raise MspFrameError(
+                "MSP_STATUS payload length does not match its mode-flag header: "
+                f"expected {expected_length} bytes, received {len(payload)}"
+            )
+
+        (
+            pid_cycle_time_us,
+            i2c_error_count,
+            sensor_flags,
+            base_flight_mode_flags,
+            pid_profile_index,
+            system_load_percent,
+            gyro_cycle_time_us,
+        ) = unpack_from("<HHHIBHH", payload)
+        extra_mode_flags = int.from_bytes(
+            payload[16 : 16 + extra_mode_byte_count], byteorder="little"
+        )
+        flight_mode_flags = base_flight_mode_flags | (extra_mode_flags << 32)
+        trailing_offset = 16 + extra_mode_byte_count
+        arming_disable_flag_count = payload[trailing_offset]
+        arming_disable_flags = int.from_bytes(
+            payload[trailing_offset + 1 : trailing_offset + 5], byteorder="little"
+        )
+        configuration_state_flags = payload[trailing_offset + 5]
+
+        return FlightControllerStatus(
+            pid_cycle_time_us=pid_cycle_time_us,
+            i2c_error_count=i2c_error_count,
+            sensors=Sensor(sensor_flags),
+            flight_mode_flags=flight_mode_flags,
+            pid_profile_index=pid_profile_index,
+            system_load_percent=system_load_percent,
+            gyro_cycle_time_us=gyro_cycle_time_us,
+            arming_disable_flag_count=arming_disable_flag_count,
+            arming_disable_flags=arming_disable_flags,
+            configuration_state_flags=configuration_state_flags,
+        )
+
     def attitude(self) -> Attitude:
         """Read roll, pitch, and yaw angles from Betaflight."""
         response = self.request(MSP_ATTITUDE)
@@ -225,4 +321,23 @@ class MspClient:
             roll=roll_decidegrees / 10.0,
             pitch=pitch_decidegrees / 10.0,
             yaw=float(yaw_degrees),
+        )
+
+    def analog(self) -> AnalogTelemetry:
+        """Read battery, current, consumption, and RSSI telemetry."""
+        response = self.request(MSP_ANALOG)
+        if len(response.payload) != 9:
+            raise MspFrameError(
+                f"MSP_ANALOG payload must contain exactly 9 bytes, received {len(response.payload)}"
+            )
+
+        legacy_decivolts, milliamp_hours, rssi, centiamps, centivolts = unpack(
+            "<BHHhH", response.payload
+        )
+        return AnalogTelemetry(
+            battery_voltage=centivolts / 100.0,
+            legacy_battery_voltage=legacy_decivolts / 10.0,
+            milliamp_hours_drawn=milliamp_hours,
+            rssi=rssi,
+            current=centiamps / 100.0,
         )

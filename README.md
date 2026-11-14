@@ -86,9 +86,9 @@ robot-capture-image --camera-index 0 --warmup-frames 30
 
 ## Read Betaflight telemetry
 
-The MSP client supports the read-only `MSP_API_VERSION` and `MSP_ATTITUDE`
-commands. On the Raspberry Pi, with UART3 already configured for MSP in
-Betaflight, read the API version with:
+The MSP client supports the read-only `MSP_API_VERSION`, `MSP_STATUS`,
+`MSP_ATTITUDE`, and `MSP_ANALOG` commands. On the Raspberry Pi, with UART3
+already configured for MSP in Betaflight, read the API version with:
 
 ```bash
 uv run --locked uav-msp --port /dev/ttyAMA0 --command api-version
@@ -120,6 +120,27 @@ Betaflight 4.4.3 returns a six-byte attitude payload: signed little-endian
 16-bit roll and pitch in tenths of a degree, followed by signed little-endian
 16-bit yaw in whole degrees. The CLI converts all three values to degrees.
 
+Read flight-controller status:
+
+```bash
+uv run --locked uav-msp --port /dev/ttyAMA0 --command status
+```
+
+The output includes PID cycle time, I2C error count, available sensors, raw
+flight-mode flags, PID profile, system load, arming-disable flags, and the
+reboot-required state. Mode flag positions depend on `MSP_BOXIDS`, so the CLI
+deliberately displays the exact bitmask instead of guessing mode names.
+
+Read battery and signal telemetry:
+
+```bash
+uv run --locked uav-msp --port /dev/ttyAMA0 --command analog
+```
+
+`MSP_ANALOG` reports precise battery voltage in 0.01 V units, legacy voltage in
+0.1 V units, current in signed 0.01 A units, consumed capacity in mAh, and raw
+RSSI. The CLI converts voltage and current to volts and amperes.
+
 The command defaults to 115200 baud and a two-second timeout. It does not arm
 the controller, control motors, modify Betaflight configuration, or write to
 EEPROM. Bench tests must be performed without propellers.
@@ -139,8 +160,7 @@ file with `uv lock` and commit both files.
 ## Next increments
 
 The API-version CLI has passed its Raspberry Pi hardware smoke test. Next,
-smoke-test one-shot and watched attitude reads, then add further read-only
-telemetry commands one at a time. Raspberry Pi Camera Module 3 capture remains
-a separate future increment; the detection algorithm must remain independent
-from Picamera2 and serial communication.
+smoke-test attitude, status, and analog reads. Raspberry Pi Camera Module 3
+capture remains a separate future increment; the detection algorithm must
+remain independent from Picamera2 and serial communication.
 
