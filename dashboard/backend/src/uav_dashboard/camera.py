@@ -6,7 +6,11 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
+
+import cv2
+import numpy as np
+from uav.square_detection import Image, annotate_squares, detect_squares
 
 from uav_dashboard.models import CameraStatusData
 
@@ -32,6 +36,7 @@ class CameraProcess(Protocol):
 
 
 CameraProcessFactory = Callable[[tuple[str, ...]], Awaitable[CameraProcess]]
+CameraFrameProcessor = Callable[[bytes], bytes]
 
 
 @dataclass(frozen=True)
@@ -40,6 +45,38 @@ class CameraStreamError:
 
 
 CameraStreamItem = bytes | CameraStreamError
+
+
+def detect_and_annotate_frame(
+    frame: bytes,
+    *,
+    threshold: int = 100,
+    min_area: float = 1000.0,
+    jpeg_quality: int = 70,
+) -> bytes:
+    """Decode one JPEG and draw the reusable square detector's results."""
+    if not 1 <= jpeg_quality <= 100:
+        raise ValueError("jpeg_quality must be between 1 and 100")
+
+    encoded = np.frombuffer(frame, dtype=np.uint8)
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    if decoded is None:
+        raise ValueError("camera emitted an invalid JPEG frame")
+
+    image = cast(Image, decoded)
+    detections = detect_squares(image, threshold=threshold, min_area=min_area)
+    if not detections:
+        return frame
+
+    annotated = annotate_squares(image, detections)
+    encoded_ok, encoded_frame = cv2.imencode(
+        ".jpg",
+        annotated,
+        [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality],
+    )
+    if not encoded_ok:
+        raise RuntimeError("failed to encode annotated camera frame")
+    return encoded_frame.tobytes()
 
 
 def extract_jpeg_frames(buffer: bytearray) -> list[bytes]:
@@ -98,6 +135,7 @@ class CameraService:
         quality: int = 70,
         rotation: int = 180,
         process_factory: CameraProcessFactory = create_camera_process,
+        frame_processor: CameraFrameProcessor | None = None,
     ) -> None:
         if camera_index < 0:
             raise ValueError("camera_index must not be negative")
@@ -115,6 +153,9 @@ class CameraService:
         self.framerate = framerate
         self.rotation = rotation
         self._process_factory = process_factory
+        self._frame_processor = frame_processor or (
+            lambda frame: detect_and_annotate_frame(frame, jpeg_quality=quality)
+        )
         self._command = (
             executable,
             "--timeout",
@@ -224,7 +265,8 @@ class CameraService:
 
                 buffer.extend(chunk)
                 for frame in extract_jpeg_frames(buffer):
-                    self._publish(frame)
+                    processed_frame = await asyncio.to_thread(self._frame_processor, frame)
+                    self._publish(processed_frame)
         except asyncio.CancelledError:
             raise
         except Exception as error:

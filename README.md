@@ -1,8 +1,10 @@
 # UAV vision prototype
 
-An educational Python project for UAV computer vision and read-only Betaflight
-telemetry. It detects a black square in an image and includes a minimal MSP v1
-client for querying the flight controller over UART.
+An educational Python project for UAV computer vision and Betaflight telemetry.
+It detects a black square, includes an MSP v1 client for querying the flight
+controller over UART, and is preparing a strictly gated, propeller-free motor
+response demonstration for a secured bench stand. The currently implemented
+MSP client and dashboard remain read-only.
 
 ## Project structure
 
@@ -202,7 +204,7 @@ sudo reboot
 The first dashboard milestone provides telemetry snapshots, connection and
 error states, an MSP command journal, a shared 10 Hz WebSocket stream, an
 attitude indicator, battery and controller status, and a live Camera Module 3
-panel.
+panel with square detection.
 The backend polls MSP only while at least one browser is connected, regardless
 of how many dashboard tabs subscribe. It keeps one serial connection open,
 reads `MSP_API_VERSION` once per connection, reads `MSP_ATTITUDE` at the fast
@@ -225,6 +227,12 @@ UAV_CAMERA_JPEG_QUALITY=70 \
 UAV_CAMERA_ROTATION=180 \
 uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
 ```
+
+Each camera JPEG is decoded on a worker thread and passed to the reusable
+square detector. Frames with detections are re-encoded with green contours and
+center points before being sent to every browser; frames without detections are
+forwarded unchanged. Detection remains visual-only and has no connection to
+motor output or flight control.
 
 The default stream interval is 0.1 seconds. It can be changed when starting the
 backend, with a minimum of 0.05 seconds:
@@ -260,9 +268,12 @@ file with `uv lock` and commit both files.
 
 ## Next increments
 
-The dashboard and read-only telemetry have passed a Raspberry Pi hardware smoke
-test. Live Camera Module 3 dashboard streaming is implemented and awaiting its
-hardware smoke test. After that, the next increment is decoding selected MJPEG
-frames with OpenCV and applying the existing square detector without coupling
-the detection algorithm to camera or serial communication.
+The dashboard, read-only telemetry, and live Camera Module 3 stream have passed
+Raspberry Pi hardware smoke tests. Live frames now use the existing square
+detector and show detections in the browser; this addition still needs a
+Raspberry Pi hardware smoke test. The next increment is the simulated quadrant
+response. Once that response is verified, a separate
+disabled-by-default bench adapter may issue bounded single-motor test pulses
+with propellers removed; automatic ARM, RC injection, configuration writes,
+and flight control remain outside the current scope.
 

@@ -145,7 +145,9 @@ function CameraPanel() {
             <small>{status?.error ?? "Waiting for the first MJPEG frame"}</small>
           </div>
         )}
-        <span className="camera-label">{streamDetails} · {cameraLive ? "LIVE" : "OFFLINE"}</span>
+        <span className="camera-label">
+          {streamDetails} · SQUARE DETECTION · {cameraLive ? "LIVE" : "OFFLINE"}
+        </span>
       </div>
     </section>
   );
@@ -299,7 +301,7 @@ export default function App() {
 
       <section className="summary-strip">
         <div><span>MSP API</span><strong>{snapshot?.api_version.display ?? "—"}</strong></div>
-        <div><span>System load</span><strong>{snapshot ? `${snapshot.status.system_load_percent}%` : "—"}</strong></div>
+        <div><span>FC CPU load</span><strong>{snapshot ? `${snapshot.status.system_load_percent}%` : "—"}</strong></div>
         <div><span>PID cycle</span><strong>{snapshot ? `${snapshot.status.pid_cycle_time_us} µs` : "—"}</strong></div>
         <div><span>Last sample</span><strong>{snapshot ? formatTime(snapshot.captured_at) : "—"}</strong></div>
       </section>
