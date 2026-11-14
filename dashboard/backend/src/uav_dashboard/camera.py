@@ -62,6 +62,29 @@ SIMULATED_MOTOR_BY_QUADRANT: dict[Quadrant, SimulatedMotor] = {
 }
 
 
+def create_motor_mapping(
+    *,
+    top_left: str = "M1",
+    top_right: str = "M2",
+    bottom_right: str = "M3",
+    bottom_left: str = "M4",
+) -> dict[Quadrant, SimulatedMotor]:
+    """Validate and return a complete one-to-one quadrant mapping."""
+    raw_mapping = {
+        "top_left": top_left,
+        "top_right": top_right,
+        "bottom_right": bottom_right,
+        "bottom_left": bottom_left,
+    }
+    allowed_motors = {"M1", "M2", "M3", "M4"}
+    invalid = sorted(set(raw_mapping.values()) - allowed_motors)
+    if invalid:
+        raise ValueError(f"unknown simulated motor labels: {', '.join(invalid)}")
+    if len(set(raw_mapping.values())) != len(raw_mapping):
+        raise ValueError("each quadrant must map to a different simulated motor")
+    return cast(dict[Quadrant, SimulatedMotor], raw_mapping)
+
+
 @dataclass(frozen=True)
 class CameraStreamError:
     message: str
@@ -88,10 +111,16 @@ def classify_quadrant(detection: SquareDetection, width: int, height: int) -> Qu
 class CameraDetectionTracker:
     """Keep a brief visual decision through dropped detections, then mark it stale."""
 
-    def __init__(self, stale_timeout: float = 0.4) -> None:
+    def __init__(
+        self,
+        stale_timeout: float = 0.4,
+        *,
+        motor_mapping: dict[Quadrant, SimulatedMotor] | None = None,
+    ) -> None:
         if stale_timeout <= 0:
             raise ValueError("detection stale timeout must be positive")
         self._stale_timeout = stale_timeout
+        self._motor_mapping = dict(motor_mapping or SIMULATED_MOTOR_BY_QUADRANT)
         self._last_analysis: CameraFrameAnalysis | None = None
         self._last_detected_at: datetime | None = None
         self._last_detected_monotonic: float | None = None
@@ -200,7 +229,7 @@ class CameraDetectionTracker:
             ),
             area=detection.area,
             quadrant=quadrant,
-            simulated_motor=SIMULATED_MOTOR_BY_QUADRANT[quadrant],
+            simulated_motor=self._motor_mapping[quadrant],
         )
 
     def _empty_event(
@@ -342,6 +371,7 @@ class CameraService:
         process_factory: CameraProcessFactory = create_camera_process,
         frame_processor: CameraFrameProcessor | None = None,
         detection_observer: CameraDetectionObserver | None = None,
+        motor_mapping: dict[Quadrant, SimulatedMotor] | None = None,
     ) -> None:
         if camera_index < 0:
             raise ValueError("camera_index must not be negative")
@@ -362,7 +392,10 @@ class CameraService:
         self._frame_processor = frame_processor
         self._detection_observer = detection_observer
         self._jpeg_quality = quality
-        self._detection_tracker = CameraDetectionTracker(detection_stale_timeout)
+        self._detection_tracker = CameraDetectionTracker(
+            detection_stale_timeout,
+            motor_mapping=motor_mapping,
+        )
         self._detection_watch_interval = min(detection_stale_timeout / 2, 0.1)
         self._command = (
             executable,

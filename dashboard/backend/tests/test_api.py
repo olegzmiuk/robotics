@@ -88,6 +88,7 @@ def test_api_enables_and_disables_simulated_vision_response(tmp_path: Path) -> N
     ) as client:
         initial = client.get("/api/vision-response")
         enabled = client.post("/api/vision-response/enabled", json={"enabled": True})
+        preflight = client.get("/api/vision-response/preflight")
         with client.websocket_connect("/api/vision-response/ws") as websocket:
             streamed = websocket.receive_json()
         journal = client.get("/api/vision-response/journal")
@@ -96,6 +97,14 @@ def test_api_enables_and_disables_simulated_vision_response(tmp_path: Path) -> N
     assert initial.json()["state"] == "disabled"
     assert enabled.json()["state"] == "ready"
     assert enabled.json()["simulated_only"] is True
+    assert preflight.json()["motor_mapping"] == {
+        "top_left": "M1",
+        "top_right": "M2",
+        "bottom_right": "M3",
+        "bottom_left": "M4",
+    }
+    assert preflight.json()["physical_output_available"] is False
+    assert preflight.json()["msp_writes_enabled"] is False
     assert streamed["state"] == "ready"
     assert journal.json()[0]["event"] == "enabled"
     assert disabled.json()["state"] == "disabled"

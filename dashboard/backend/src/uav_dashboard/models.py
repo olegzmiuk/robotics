@@ -141,6 +141,15 @@ class VisionResponseLogEntry(FrozenModel):
     reason: str
 
 
+class VisionResponsePreflightData(FrozenModel):
+    motor_mapping: dict[str, Literal["M1", "M2", "M3", "M4"]]
+    mapping_complete: Literal[True] = True
+    mapping_unique: Literal[True] = True
+    ready_for_simulation: Literal[True] = True
+    physical_output_available: Literal[False] = False
+    msp_writes_enabled: Literal[False] = False
+
+
 class VisionResponseEnabledRequest(FrozenModel):
     enabled: bool
 

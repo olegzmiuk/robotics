@@ -8,11 +8,13 @@ from datetime import datetime, timezone
 from time import monotonic
 from typing import Literal
 
+from uav_dashboard.camera import Quadrant, SimulatedMotor, create_motor_mapping
 from uav_dashboard.models import (
     CameraDetectionData,
     TelemetryStreamData,
     TelemetryStreamError,
     VisionResponseLogEntry,
+    VisionResponsePreflightData,
     VisionResponseStateData,
 )
 
@@ -31,6 +33,7 @@ class VisionResponseController:
         journal_size: int = 100,
         clock: Callable[[], float] = monotonic,
         now_factory: Callable[[], datetime] | None = None,
+        motor_mapping: dict[Quadrant, SimulatedMotor] | None = None,
     ) -> None:
         if pulse_duration <= 0:
             raise ValueError("simulated pulse duration must be positive")
@@ -46,6 +49,7 @@ class VisionResponseController:
         self._quadrant_dwell = quadrant_dwell
         self._clock = clock
         self._now_factory = now_factory or (lambda: datetime.now(timezone.utc))
+        self._motor_mapping = dict(motor_mapping or create_motor_mapping())
         self._journal: deque[VisionResponseLogEntry] = deque(maxlen=journal_size)
         self._enabled = False
         self._state: ResponseState = "disabled"
@@ -125,6 +129,12 @@ class VisionResponseController:
             return
         if not self._enabled or self._fault_source is not None:
             return
+        if event.simulated_motor != self._motor_mapping[event.quadrant]:
+            self._enter_fault(
+                "camera",
+                "Camera decision does not match the configured motor mapping",
+            )
+            return
         self._observe_quadrant(event.quadrant, now)
         if self._state != "ready":
             return
@@ -191,6 +201,11 @@ class VisionResponseController:
 
     def journal(self) -> list[VisionResponseLogEntry]:
         return list(reversed(self._journal))
+
+    def preflight(self) -> VisionResponsePreflightData:
+        """Describe validated simulation wiring without enabling physical output."""
+        mapping = {str(quadrant): motor for quadrant, motor in self._motor_mapping.items()}
+        return VisionResponsePreflightData(motor_mapping=mapping)
 
     def _advance(self, now: float) -> None:
         if self._deadline is None or now < self._deadline:

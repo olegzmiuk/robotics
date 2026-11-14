@@ -109,6 +109,15 @@ export interface VisionResponseLogEntry {
   reason: string;
 }
 
+export interface VisionResponsePreflightData {
+  motor_mapping: Record<DetectionQuadrant, SimulatedMotor>;
+  mapping_complete: true;
+  mapping_unique: true;
+  ready_for_simulation: true;
+  physical_output_available: false;
+  msp_writes_enabled: false;
+}
+
 export interface TelemetryErrorData {
   code: "uart_disconnected" | "telemetry_error";
   message: string;

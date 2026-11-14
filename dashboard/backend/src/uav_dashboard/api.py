@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from uav.msp import MspError
 
-from uav_dashboard.camera import MJPEG_BOUNDARY, CameraService, CameraSource
+from uav_dashboard.camera import MJPEG_BOUNDARY, CameraService, CameraSource, create_motor_mapping
 from uav_dashboard.models import (
     CameraStatusData,
     CommandLogEntry,
@@ -22,6 +22,7 @@ from uav_dashboard.models import (
     TelemetrySnapshot,
     VisionResponseEnabledRequest,
     VisionResponseLogEntry,
+    VisionResponsePreflightData,
     VisionResponseStateData,
 )
 from uav_dashboard.service import TelemetryService
@@ -42,10 +43,17 @@ def create_app(
         baud_rate=int(os.getenv("UAV_SERIAL_BAUD_RATE", "115200")),
         timeout=float(os.getenv("UAV_SERIAL_TIMEOUT", "2.0")),
     )
+    motor_mapping = create_motor_mapping(
+        top_left=os.getenv("UAV_MOTOR_TOP_LEFT", "M1"),
+        top_right=os.getenv("UAV_MOTOR_TOP_RIGHT", "M2"),
+        bottom_right=os.getenv("UAV_MOTOR_BOTTOM_RIGHT", "M3"),
+        bottom_left=os.getenv("UAV_MOTOR_BOTTOM_LEFT", "M4"),
+    )
     response_controller = vision_response_controller or VisionResponseController(
         pulse_duration=float(os.getenv("UAV_SIMULATED_PULSE_DURATION", "0.2")),
         cooldown_duration=float(os.getenv("UAV_SIMULATED_PULSE_COOLDOWN", "1.0")),
         quadrant_dwell=float(os.getenv("UAV_SIMULATED_QUADRANT_DWELL", "0.25")),
+        motor_mapping=motor_mapping,
     )
     broadcaster = TelemetryBroadcaster(
         service,
@@ -64,6 +72,7 @@ def create_app(
         rotation=int(os.getenv("UAV_CAMERA_ROTATION", "180")),
         detection_stale_timeout=float(os.getenv("UAV_DETECTION_STALE_TIMEOUT", "0.4")),
         detection_observer=response_controller.observe_detection,
+        motor_mapping=motor_mapping,
     )
 
     @asynccontextmanager
@@ -116,6 +125,10 @@ def create_app(
     @app.get("/api/vision-response/journal", response_model=list[VisionResponseLogEntry])
     async def vision_response_journal() -> list[VisionResponseLogEntry]:
         return response_controller.journal()
+
+    @app.get("/api/vision-response/preflight", response_model=VisionResponsePreflightData)
+    async def vision_response_preflight() -> VisionResponsePreflightData:
+        return response_controller.preflight()
 
     @app.post("/api/vision-response/enabled", response_model=VisionResponseStateData)
     async def set_vision_response_enabled(

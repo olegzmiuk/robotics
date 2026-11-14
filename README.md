@@ -262,11 +262,18 @@ The dry-run timings can be adjusted without rebuilding:
 UAV_SIMULATED_PULSE_DURATION=0.2 \
 UAV_SIMULATED_PULSE_COOLDOWN=1.0 \
 UAV_SIMULATED_QUADRANT_DWELL=0.25 \
+UAV_MOTOR_TOP_LEFT=M1 \
+UAV_MOTOR_TOP_RIGHT=M2 \
+UAV_MOTOR_BOTTOM_RIGHT=M3 \
+UAV_MOTOR_BOTTOM_LEFT=M4 \
 uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
 ```
 
 These values control simulation only. There is still no MSP motor command,
-ARM command, RC injection, or physical output path.
+ARM command, RC injection, or physical output path. All four mapping values
+must be known, unique `M1`-`M4` labels; invalid or duplicated values stop the
+backend at startup. The dashboard preflight section shows the active validated
+mapping and confirms that physical output and MSP writes remain unavailable.
 
 The default stream interval is 0.1 seconds. It can be changed when starting the
 backend, with a minimum of 0.05 seconds:

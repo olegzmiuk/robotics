@@ -5,6 +5,7 @@ import {
   fetchCommandLog,
   fetchTelemetry,
   fetchVisionResponseJournal,
+  fetchVisionResponsePreflight,
   setVisionResponseEnabled,
   telemetryWebSocketUrl,
   visionResponseWebSocketUrl,
@@ -17,6 +18,7 @@ import type {
   TelemetrySnapshot,
   TelemetryStreamEvent,
   VisionResponseLogEntry,
+  VisionResponsePreflightData,
   VisionResponseStateData,
 } from "./types";
 
@@ -302,6 +304,7 @@ function CommandLog({ entries }: { entries: CommandLogEntry[] }) {
 function VisionResponsePanel() {
   const [response, setResponse] = useState<VisionResponseStateData | null>(null);
   const [journal, setJournal] = useState<VisionResponseLogEntry[]>([]);
+  const [preflight, setPreflight] = useState<VisionResponsePreflightData | null>(null);
   const [busy, setBusy] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
 
@@ -330,6 +333,17 @@ function VisionResponsePanel() {
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       socket?.close();
     };
+  }, []);
+
+  useEffect(() => {
+    const update = async () => {
+      try {
+        setPreflight(await fetchVisionResponsePreflight());
+      } catch {
+        setPreflight(null);
+      }
+    };
+    void update();
   }, []);
 
   useEffect(() => {
@@ -404,6 +418,23 @@ function VisionResponsePanel() {
         <div className="response-reason">
           <span className="metric-label">Decision reason</span>
           <strong>{requestError ?? response?.reason ?? "Waiting for controller state"}</strong>
+        </div>
+        <div className="response-preflight">
+          <div>
+            <span className="metric-label">Validated quadrant mapping</span>
+            <div className="response-mapping">
+              {DETECTION_QUADRANTS.map((quadrant) => (
+                <span key={quadrant}>
+                  {quadrant.replace("_", " ")} <b>{preflight?.motor_mapping[quadrant] ?? "—"}</b>
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="response-preflight-flags">
+            <span className="badge badge-safe">Mapping unique</span>
+            <span className="badge badge-muted">Physical output off</span>
+            <span className="badge badge-muted">MSP writes off</span>
+          </div>
         </div>
         <div className="response-journal">
           <span className="metric-label">Decision journal</span>

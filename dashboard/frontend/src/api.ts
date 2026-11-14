@@ -3,6 +3,7 @@ import type {
   CommandLogEntry,
   TelemetrySnapshot,
   VisionResponseLogEntry,
+  VisionResponsePreflightData,
   VisionResponseStateData,
 } from "./types";
 
@@ -46,6 +47,10 @@ export function fetchVisionResponse(): Promise<VisionResponseStateData> {
 
 export function fetchVisionResponseJournal(): Promise<VisionResponseLogEntry[]> {
   return getJson<VisionResponseLogEntry[]>("/api/vision-response/journal");
+}
+
+export function fetchVisionResponsePreflight(): Promise<VisionResponsePreflightData> {
+  return getJson<VisionResponsePreflightData>("/api/vision-response/preflight");
 }
 
 export function setVisionResponseEnabled(enabled: boolean): Promise<VisionResponseStateData> {

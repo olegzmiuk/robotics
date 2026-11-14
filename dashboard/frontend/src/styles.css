@@ -144,6 +144,11 @@ h2 { font-size: 18px; font-weight: 600; }
 .response-state-grid .metric-value { font-size: 14px; text-transform: uppercase; }
 .response-reason { padding: 14px 16px; background: rgba(15,23,30,.96); }
 .response-reason strong { color: #c9d5dc; font: 500 11px "SFMono-Regular", Consolas, monospace; }
+.response-preflight { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 18px; background: rgba(14,21,28,.97); }
+.response-mapping { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.response-mapping span { padding: 5px 7px; border: 1px solid rgba(164,184,199,.15); border-radius: 5px; color: #82949f; font: 9px "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
+.response-mapping b { margin-left: 5px; color: var(--cyan); }
+.response-preflight-flags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .response-journal { grid-column: 1 / -1; padding: 15px 18px; background: rgba(12,19,25,.97); }
 .response-journal > div { display: grid; gap: 5px; margin-top: 8px; }
 .response-journal p { display: grid; grid-template-columns: 85px 130px minmax(0, 1fr); gap: 12px; margin: 0; color: #8da0ac; font: 10px "SFMono-Regular", Consolas, monospace; }
@@ -180,7 +185,7 @@ footer { display: flex; justify-content: space-between; color: #667581; font-siz
   .log-panel, .response-panel { grid-column: auto; }
   .response-content { grid-template-columns: 1fr; }
   .response-output { grid-row: auto; }
-  .response-journal { grid-column: auto; }
+  .response-preflight, .response-journal { grid-column: auto; }
 }
 
 @media (max-width: 600px) {
@@ -197,6 +202,8 @@ footer { display: flex; justify-content: space-between; color: #667581; font-siz
   .response-panel .panel-heading { align-items: flex-start; }
   .response-heading-actions { align-items: flex-end; flex-direction: column; }
   .response-state-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .response-preflight { align-items: flex-start; flex-direction: column; }
+  .response-preflight-flags { justify-content: flex-start; }
   .response-journal p { grid-template-columns: 72px 1fr; }
   .response-journal p span { grid-column: 1 / -1; }
   footer { flex-direction: column; gap: 5px; }

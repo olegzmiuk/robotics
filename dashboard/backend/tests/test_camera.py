@@ -5,12 +5,14 @@ from datetime import datetime, timedelta, timezone
 
 import cv2
 import numpy as np
+import pytest
 from uav_dashboard.camera import (
     CameraDetectionTracker,
     CameraFrameAnalysis,
     CameraService,
     analyze_and_annotate_frame,
     classify_quadrant,
+    create_motor_mapping,
     detect_and_annotate_frame,
     extract_jpeg_frames,
 )
@@ -183,6 +185,40 @@ def test_detection_tracker_holds_then_clears_stale_decision() -> None:
     assert stale.simulated_motor is None
     assert stale.quadrant is None
     assert stale.age_ms == 500
+
+
+def test_detection_tracker_uses_configured_motor_mapping() -> None:
+    image = np.full((120, 160, 3), 255, dtype=np.uint8)
+    cv2.rectangle(image, (20, 20), (70, 70), (0, 0, 0), -1)
+    encoded_ok, encoded = cv2.imencode(".jpg", image)
+    assert encoded_ok
+    analysis = analyze_and_annotate_frame(encoded.tobytes(), min_area=500)
+    mapping = create_motor_mapping(
+        top_left="M4",
+        top_right="M3",
+        bottom_right="M2",
+        bottom_left="M1",
+    )
+    tracker = CameraDetectionTracker(motor_mapping=mapping)
+
+    event = tracker.update(
+        analysis,
+        captured_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        monotonic_time=1.0,
+    )
+
+    assert event.quadrant == "top_left"
+    assert event.simulated_motor == "M4"
+
+
+def test_motor_mapping_rejects_unknown_motor_label() -> None:
+    with pytest.raises(ValueError, match="unknown simulated motor"):
+        create_motor_mapping(top_left="M5")
+
+
+def test_motor_mapping_rejects_duplicate_motors() -> None:
+    with pytest.raises(ValueError, match="different simulated motor"):
+        create_motor_mapping(top_left="M1", top_right="M1")
 
 
 def test_detection_tracker_expires_when_frames_stop() -> None:
