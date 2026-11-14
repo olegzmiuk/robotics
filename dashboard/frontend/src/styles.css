@@ -9,6 +9,7 @@
   --cyan: #54e5d1;
   --amber: #f1b657;
   --red: #ff6d72;
+  --white: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -38,8 +39,18 @@ h2 { font-size: 18px; font-weight: 600; }
 .topbar button { border: 1px solid rgba(84, 229, 209, .28); color: var(--cyan); background: rgba(84, 229, 209, .07); border-radius: 10px; padding: 12px 16px; cursor: pointer; font-weight: 600; }
 .topbar button:disabled { opacity: .55; cursor: wait; }
 
-.error-banner { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; padding: 12px 16px; border: 1px solid rgba(255, 109, 114, .28); border-radius: 10px; color: #ffc3c5; background: rgba(255, 109, 114, .07); font-size: 13px; }
-.error-banner span { color: #b99598; }
+.telemetry-alert { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; margin-bottom: 16px; padding: 16px 18px; border: 1px solid rgba(255, 109, 114, .35); border-left-width: 4px; border-radius: 12px; color: #ffc3c5; background: linear-gradient(90deg, rgba(255, 109, 114, .13), rgba(255, 109, 114, .045)); box-shadow: 0 12px 32px rgba(0, 0, 0, .16), inset 0 0 28px rgba(255, 109, 114, .025); }
+.telemetry-alert-uart { animation: uart-alert-pulse 1.8s ease-in-out infinite alternate; }
+.telemetry-alert-icon { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid rgba(255, 109, 114, .5); border-radius: 50%; color: var(--white); background: rgba(255, 109, 114, .18); box-shadow: 0 0 18px rgba(255, 109, 114, .22); font: 700 20px "SFMono-Regular", Consolas, monospace; }
+.telemetry-alert-copy strong, .telemetry-alert-copy p { display: block; }
+.telemetry-alert-copy strong { color: #ffd8da; font-size: 16px; }
+.telemetry-alert-copy p { margin: 4px 0 0; color: #c9a9ac; font-size: 12px; }
+.telemetry-alert-copy .eyebrow { color: var(--red); }
+.telemetry-alert-detail { min-width: 220px; padding-left: 18px; border-left: 1px solid rgba(255, 109, 114, .18); text-align: right; }
+.telemetry-alert-detail code, .telemetry-alert-detail span { display: block; }
+.telemetry-alert-detail code { color: var(--white); font-size: 12px; }
+.telemetry-alert-detail span { max-width: 360px; margin-top: 4px; color: #a98588; font-size: 10px; overflow-wrap: anywhere; }
+@keyframes uart-alert-pulse { to { border-color: rgba(255, 109, 114, .62); } }
 .summary-strip { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 16px; background: rgba(13, 20, 27, .7); }
 .summary-strip div { padding: 13px 18px; border-right: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .summary-strip div:last-child { border: 0; }
@@ -65,7 +76,7 @@ h2 { font-size: 18px; font-weight: 600; }
 .camera-message strong { font-size: 13px; margin: 5px 0; }
 .camera-message small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .camera-icon { color: var(--cyan); }
-.camera-label { position: absolute; left: 16px; bottom: 14px; z-index: 3; color: var(--muted); font: 10px "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; text-shadow: 0 1px 4px #000; }
+.camera-label { position: absolute; left: 16px; bottom: 14px; z-index: 3; color: var(--white); font: 10px "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; text-shadow: 0 1px 4px #000; }
 
 .attitude-panel { min-height: 430px; }
 .heading-readout { font: 500 12px "SFMono-Regular", Consolas, monospace; color: var(--cyan); }
@@ -93,6 +104,7 @@ h2 { font-size: 18px; font-weight: 600; }
 .badge-muted { color: var(--muted); border-color: var(--line); background: rgba(255,255,255,.025); }
 .badge-safe { color: var(--cyan); }
 .badge-warn { color: var(--amber); border-color: rgba(241,182,87,.25); background: rgba(241,182,87,.07); }
+.badge-error { color: #ffc3c5; border-color: rgba(255,109,114,.3); background: rgba(255,109,114,.08); }
 
 .log-panel { grid-column: 1 / -1; }
 .table-wrap { overflow-x: auto; }
@@ -131,5 +143,7 @@ footer { display: flex; justify-content: space-between; color: #667581; font-siz
   .camera-viewport { min-height: 320px; }
   .metric-grid { grid-template-columns: 1fr 1fr; }
   .summary-strip div { padding: 11px 12px; flex-direction: column; }
+  .telemetry-alert { grid-template-columns: auto 1fr; }
+  .telemetry-alert-detail { grid-column: 1 / -1; min-width: 0; padding: 10px 0 0; border-top: 1px solid rgba(255, 109, 114, .18); border-left: 0; text-align: left; }
   footer { flex-direction: column; gap: 5px; }
 }

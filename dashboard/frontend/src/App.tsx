@@ -8,6 +8,7 @@ import {
 import type {
   CameraStatusData,
   CommandLogEntry,
+  TelemetryErrorData,
   TelemetrySnapshot,
   TelemetryStreamEvent,
 } from "./types";
@@ -41,6 +42,29 @@ function Metric({ label, value, unit }: { label: string; value: string | number;
         {unit && <span className="metric-unit"> {unit}</span>}
       </span>
     </div>
+  );
+}
+
+function TelemetryAlert({ error }: { error: TelemetryErrorData }) {
+  const uartDisconnected = error.code === "uart_disconnected";
+
+  return (
+    <section className={`telemetry-alert ${uartDisconnected ? "telemetry-alert-uart" : ""}`} role="alert">
+      <div className="telemetry-alert-icon" aria-hidden="true">!</div>
+      <div className="telemetry-alert-copy">
+        <span className="eyebrow">{uartDisconnected ? "UART link failure" : "Telemetry error"}</span>
+        <strong>{uartDisconnected ? "UART connection lost" : "Telemetry unavailable"}</strong>
+        <p>
+          {uartDisconnected
+            ? "Check flight-controller power and the TX, RX, and GND wiring. Reconnecting automatically…"
+            : error.message}
+        </p>
+      </div>
+      <div className="telemetry-alert-detail">
+        <code>{error.serial_port}</code>
+        <span>{uartDisconnected ? error.message : "Retrying automatically"}</span>
+      </div>
+    </section>
   );
 }
 
@@ -190,7 +214,7 @@ function CommandLog({ entries }: { entries: CommandLogEntry[] }) {
 export default function App() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
   const [commands, setCommands] = useState<CommandLogEntry[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<TelemetryErrorData | null>(null);
   const [streamState, setStreamState] = useState<StreamState>("connecting");
   const [streamRateHz, setStreamRateHz] = useState(0);
   const requestInFlight = useRef(false);
@@ -204,7 +228,11 @@ export default function App() {
       setSnapshot(nextSnapshot);
       setError(null);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unknown telemetry error");
+      setError({
+        code: "telemetry_error",
+        message: requestError instanceof Error ? requestError.message : "Unknown telemetry error",
+        serial_port: snapshot?.serial_port ?? "/dev/ttyAMA0",
+      });
     }
 
     try {
@@ -214,7 +242,7 @@ export default function App() {
     } finally {
       requestInFlight.current = false;
     }
-  }, []);
+  }, [snapshot?.serial_port]);
 
   useEffect(() => {
     let stopped = false;
@@ -234,7 +262,7 @@ export default function App() {
           setSnapshot(event.snapshot);
           setError(null);
         } else {
-          setError(event.message);
+          setError(event);
         }
       });
       socket.addEventListener("close", () => {
@@ -275,6 +303,7 @@ export default function App() {
   }, []);
 
   const connected = snapshot?.connected === true && error === null && streamState === "live";
+  const uartDisconnected = error?.code === "uart_disconnected";
 
   return (
     <main className="app-shell">
@@ -289,7 +318,7 @@ export default function App() {
         <div className="topbar-actions">
           <div className={`connection ${connected ? "connection-online" : "connection-offline"}`}>
             <span className="status-dot" />
-            <div><strong>{connected ? "Flight controller online" : streamState === "connecting" ? "Connecting telemetry" : "Flight controller offline"}</strong><small>{snapshot?.serial_port ?? "/dev/ttyAMA0"} · {streamState === "live" ? `${streamRateHz} Hz` : streamState}</small></div>
+            <div><strong>{connected ? "Flight controller online" : uartDisconnected ? "UART disconnected" : streamState === "connecting" ? "Connecting telemetry" : "Flight controller offline"}</strong><small>{error?.serial_port ?? snapshot?.serial_port ?? "/dev/ttyAMA0"} · {streamState === "live" ? `${streamRateHz} Hz` : streamState}</small></div>
           </div>
           <button type="button" onClick={() => void refresh()}>
             <span>↻</span> Refresh
@@ -297,7 +326,7 @@ export default function App() {
         </div>
       </header>
 
-      {error && <div className="error-banner"><strong>Telemetry unavailable</strong><span>{error}</span></div>}
+      {error && <TelemetryAlert error={error} />}
 
       <section className="summary-strip">
         <div><span>MSP API</span><strong>{snapshot?.api_version.display ?? "—"}</strong></div>
@@ -321,7 +350,7 @@ export default function App() {
         </section>
 
         <section className="panel fc-panel">
-          <div className="panel-heading"><div><span className="eyebrow">Flight controller</span><h2>System state</h2></div><span className={`badge ${snapshot?.status.reboot_required ? "badge-warn" : "badge-safe"}`}>{snapshot?.status.reboot_required ? "Reboot required" : "Configuration ready"}</span></div>
+          <div className="panel-heading"><div><span className="eyebrow">Flight controller</span><h2>System state</h2></div><span className={`badge ${error ? "badge-error" : snapshot?.status.reboot_required ? "badge-warn" : "badge-safe"}`}>{uartDisconnected ? "UART offline" : error ? "Telemetry error" : snapshot?.status.reboot_required ? "Reboot required" : "Configuration ready"}</span></div>
           <div className="metric-grid compact">
             <Metric label="I2C errors" value={snapshot?.status.i2c_error_count ?? "—"} />
             <Metric label="PID profile" value={snapshot?.status.pid_profile_index ?? "—"} />

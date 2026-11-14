@@ -210,7 +210,9 @@ of how many dashboard tabs subscribe. It keeps one serial connection open,
 reads `MSP_API_VERSION` once per connection, reads `MSP_ATTITUDE` at the fast
 stream rate, and refreshes `MSP_STATUS` plus `MSP_ANALOG` once per second. A
 transport or protocol failure closes the serial client and triggers a clean
-reconnect. All MSP API routes are read-only.
+reconnect. UART/MSP failures produce a dedicated dashboard alert with the
+serial port, raw error, wiring and power checks, and automatic-retry status.
+All MSP API routes are read-only.
 
 The camera backend runs one `rpicam-vid` MJPEG process while one or more
 browsers consume `/api/camera/stream`. Capture stops after the last subscriber

@@ -10,7 +10,13 @@ from typing import Literal, Protocol, cast
 
 import cv2
 import numpy as np
-from uav.square_detection import Image, annotate_squares, detect_squares
+from uav.square_detection import (
+    DEFAULT_MIN_AREA,
+    DEFAULT_THRESHOLD,
+    Image,
+    annotate_squares,
+    detect_squares,
+)
 
 from uav_dashboard.models import CameraStatusData
 
@@ -50,8 +56,8 @@ CameraStreamItem = bytes | CameraStreamError
 def detect_and_annotate_frame(
     frame: bytes,
     *,
-    threshold: int = 100,
-    min_area: float = 1000.0,
+    threshold: int = DEFAULT_THRESHOLD,
+    min_area: float = DEFAULT_MIN_AREA,
     jpeg_quality: int = 70,
 ) -> bytes:
     """Decode one JPEG and draw the reusable square detector's results."""

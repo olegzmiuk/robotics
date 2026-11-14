@@ -96,4 +96,6 @@ class TelemetryStreamError(FrozenModel):
     """Recoverable telemetry error sent while the stream remains open."""
 
     type: Literal["error"] = "error"
+    code: Literal["uart_disconnected", "telemetry_error"]
     message: str
+    serial_port: str

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from typing import Literal
+
+from uav.msp import MspError
 
 from uav_dashboard.models import TelemetryStreamData, TelemetryStreamError
 from uav_dashboard.service import TelemetryService
@@ -93,7 +96,16 @@ class TelemetryBroadcaster:
                         next_slow_refresh = started_at + self._slow_interval
                     delay = self._interval
                 except Exception as error:
-                    event = TelemetryStreamError(message=str(error))
+                    code: Literal["uart_disconnected", "telemetry_error"] = (
+                        "uart_disconnected"
+                        if isinstance(error, (MspError, OSError))
+                        else "telemetry_error"
+                    )
+                    event = TelemetryStreamError(
+                        code=code,
+                        message=str(error),
+                        serial_port=self._service.port,
+                    )
                     next_slow_refresh = 0.0
                     delay = self._reconnect_interval
 

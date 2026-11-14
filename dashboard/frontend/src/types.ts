@@ -63,6 +63,12 @@ export interface CameraStatusData {
   error: string | null;
 }
 
+export interface TelemetryErrorData {
+  code: "uart_disconnected" | "telemetry_error";
+  message: string;
+  serial_port: string;
+}
+
 export type TelemetryStreamEvent =
   | { type: "telemetry"; snapshot: TelemetrySnapshot }
-  | { type: "error"; message: string };
+  | ({ type: "error" } & TelemetryErrorData);
