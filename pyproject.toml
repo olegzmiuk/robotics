@@ -9,13 +9,16 @@ description = "Educational computer-vision prototype for a UAV"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "fastapi>=0.115",
     "numpy>=1.24",
     "opencv-python>=4.8",
     "pyserial>=3.5",
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "httpx2>=2.13,<2.15",
     "mypy>=1.10",
     "pytest>=8.0",
     "ruff>=0.6",
@@ -27,12 +30,12 @@ robot-capture-image = "uav.capture:main"
 uav-msp = "uav.msp_cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "uav/src"}
-packages = ["uav"]
+package-dir = {"" = "uav/src", "uav_dashboard" = "dashboard/backend/src/uav_dashboard"}
+packages = ["uav", "uav_dashboard"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
-testpaths = ["uav/tests"]
+testpaths = ["uav/tests", "dashboard/backend/tests"]
 
 [tool.ruff]
 line-length = 100
@@ -44,6 +47,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-packages = ["uav"]
-mypy_path = "uav/src"
+packages = ["uav", "uav_dashboard"]
+mypy_path = ["uav/src", "dashboard/backend/src"]
 

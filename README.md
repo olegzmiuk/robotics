@@ -24,6 +24,9 @@ client for querying the flight controller over UART.
 │   │   ├── test_msp_cli.py
 │   │   └── test_square_detection.py
 │   └── artifacts/                  # local input and generated images
+├── dashboard/
+│   ├── backend/                    # FastAPI API and telemetry orchestration
+│   └── frontend/                   # React, TypeScript, and Vite UI
 └── pyproject.toml           # dependencies and tool configuration
 ```
 
@@ -44,11 +47,13 @@ methods from its official installation guide, then synchronize the environment:
 
 ```bash
 uv sync --locked --extra dev
+npm ci --prefix dashboard/frontend
 ```
 
 `uv` creates `.venv` automatically. `pyproject.toml` declares the allowed
 dependency ranges; `uv.lock` stores the exact resolved versions and must be
-committed to Git.
+committed to Git. The dashboard frontend requires Node.js 24 and uses
+`package-lock.json` for reproducible npm installs.
 
 ## Run the detector
 
@@ -145,6 +150,44 @@ The command defaults to 115200 baud and a two-second timeout. It does not arm
 the controller, control motors, modify Betaflight configuration, or write to
 EEPROM. Bench tests must be performed without propellers.
 
+## Run the web dashboard
+
+The dashboard is kept separate from the reusable UAV package:
+
+```text
+dashboard/frontend  -> React UI
+dashboard/backend   -> FastAPI -> uav.msp -> /dev/ttyAMA0
+```
+
+For local frontend development on the MacBook while FastAPI runs on the
+Raspberry Pi:
+
+```bash
+cd dashboard/frontend
+DASHBOARD_BACKEND_URL=http://raspberrypi.local:8000 npm run dev
+```
+
+Open `http://localhost:5173`. Vite proxies `/api` to the Raspberry Pi, so the
+browser never accesses UART directly.
+
+For a production-like deployment on Raspberry Pi, build the static frontend
+and run one FastAPI process that serves both the UI and API:
+
+```bash
+uv sync --locked --extra dev
+npm ci --prefix dashboard/frontend
+npm run build --prefix dashboard/frontend
+uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
+```
+
+Then open `http://raspberrypi.local:8000` from the MacBook. Node.js is needed
+only to build the frontend; it is not a second production backend process.
+
+The first dashboard milestone provides telemetry snapshots, connection and
+error states, an MSP command journal, automatic one-second refresh, an attitude
+indicator, battery and controller status, and a reserved camera panel. All API
+routes are read-only. Camera streaming is not implemented yet.
+
 ## Run the checks
 
 ```bash
@@ -152,6 +195,9 @@ uv run --locked ruff check .
 uv run --locked ruff format --check .
 uv run --locked mypy
 uv run --locked pytest
+cd dashboard/frontend
+npm run check
+npm run build
 ```
 
 After changing dependencies in `pyproject.toml`, deliberately refresh the lock
@@ -160,7 +206,8 @@ file with `uv lock` and commit both files.
 ## Next increments
 
 The API-version CLI has passed its Raspberry Pi hardware smoke test. Next,
-smoke-test attitude, status, and analog reads. Raspberry Pi Camera Module 3
-capture remains a separate future increment; the detection algorithm must
-remain independent from Picamera2 and serial communication.
+deploy the dashboard to Raspberry Pi and smoke-test attitude, status, and
+analog reads through the browser. Raspberry Pi Camera Module 3 capture and
+dashboard streaming remain a separate future increment; the detection
+algorithm must remain independent from Picamera2 and serial communication.
 

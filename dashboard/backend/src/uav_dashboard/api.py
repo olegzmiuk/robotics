@@ -1,0 +1,69 @@
+"""FastAPI application for the Raspberry Pi UAV dashboard."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from uav.msp import MspError
+
+from uav_dashboard.models import CommandLogEntry, HealthData, TelemetrySnapshot
+from uav_dashboard.service import TelemetryService
+
+
+def create_app(
+    telemetry_service: TelemetryService | None = None,
+    *,
+    frontend_dist: Path | None = None,
+) -> FastAPI:
+    """Create an API app with injectable hardware access for tests."""
+    service = telemetry_service or TelemetryService(
+        port=os.getenv("UAV_SERIAL_PORT", "/dev/ttyAMA0"),
+        baud_rate=int(os.getenv("UAV_SERIAL_BAUD_RATE", "115200")),
+        timeout=float(os.getenv("UAV_SERIAL_TIMEOUT", "2.0")),
+    )
+    app = FastAPI(title="UAV Dashboard API", version="0.1.0")
+
+    allowed_origins = os.getenv(
+        "UAV_DASHBOARD_CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[origin.strip() for origin in allowed_origins if origin.strip()],
+        allow_credentials=False,
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/api/health", response_model=HealthData)
+    async def health() -> HealthData:
+        return HealthData(
+            status="ok",
+            flight_controller_connected=service.connected,
+            serial_port=service.port,
+        )
+
+    @app.get("/api/telemetry", response_model=TelemetrySnapshot)
+    async def telemetry() -> TelemetrySnapshot:
+        try:
+            return await asyncio.to_thread(service.read_snapshot)
+        except (MspError, OSError, ValueError) as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+
+    @app.get("/api/commands", response_model=list[CommandLogEntry])
+    async def commands() -> list[CommandLogEntry]:
+        return service.command_log()
+
+    static_directory = frontend_dist or (Path(__file__).resolve().parents[3] / "frontend" / "dist")
+    if static_directory.is_dir():
+        app.mount("/", StaticFiles(directory=static_directory, html=True), name="dashboard")
+
+    return app
+
+
+app = create_app()
