@@ -85,6 +85,36 @@ class CameraStatusData(FrozenModel):
     error: str | None = None
 
 
+class CameraPointData(FrozenModel):
+    x: int
+    y: int
+
+
+class CameraBoundingBoxData(FrozenModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+class CameraDetectionData(FrozenModel):
+    """Latest square decision emitted by the camera pipeline."""
+
+    type: Literal["detection"] = "detection"
+    status: Literal["detected", "holding", "stale", "none", "error"]
+    captured_at: datetime
+    last_detected_at: datetime | None = None
+    age_ms: float | None = None
+    frame_width: int
+    frame_height: int
+    center: CameraPointData | None = None
+    bounding_box: CameraBoundingBoxData | None = None
+    area: float | None = None
+    quadrant: Literal["top_left", "top_right", "bottom_left", "bottom_right"] | None = None
+    simulated_motor: Literal["M1", "M2", "M3", "M4"] | None = None
+    error: str | None = None
+
+
 class TelemetryStreamData(FrozenModel):
     """Successful telemetry event sent over the dashboard WebSocket."""
 

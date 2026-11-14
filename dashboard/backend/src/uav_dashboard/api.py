@@ -46,6 +46,7 @@ def create_app(
         framerate=int(os.getenv("UAV_CAMERA_FRAMERATE", "15")),
         quality=int(os.getenv("UAV_CAMERA_JPEG_QUALITY", "70")),
         rotation=int(os.getenv("UAV_CAMERA_ROTATION", "180")),
+        detection_stale_timeout=float(os.getenv("UAV_DETECTION_STALE_TIMEOUT", "0.4")),
     )
 
     @asynccontextmanager
@@ -102,6 +103,19 @@ def create_app(
             media_type=f"multipart/x-mixed-replace; boundary={MJPEG_BOUNDARY.decode()}",
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.websocket("/api/camera/detection/ws")
+    async def camera_detection_stream(websocket: WebSocket) -> None:
+        await websocket.accept()
+        queue = camera.subscribe_detections()
+        try:
+            while True:
+                event = await queue.get()
+                await websocket.send_text(event.model_dump_json())
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await camera.unsubscribe_detections(queue)
 
     @app.websocket("/api/telemetry/ws")
     async def telemetry_stream(websocket: WebSocket) -> None:

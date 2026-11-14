@@ -26,3 +26,9 @@ export function telemetryWebSocketUrl(): string {
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 }
+
+export function cameraDetectionWebSocketUrl(): string {
+  const url = new URL("/api/camera/detection/ws", window.location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}

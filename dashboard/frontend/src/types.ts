@@ -63,6 +63,26 @@ export interface CameraStatusData {
   error: string | null;
 }
 
+export type DetectionStatus = "detected" | "holding" | "stale" | "none" | "error";
+export type DetectionQuadrant = "top_left" | "top_right" | "bottom_left" | "bottom_right";
+export type SimulatedMotor = "M1" | "M2" | "M3" | "M4";
+
+export interface CameraDetectionData {
+  type: "detection";
+  status: DetectionStatus;
+  captured_at: string;
+  last_detected_at: string | null;
+  age_ms: number | null;
+  frame_width: number;
+  frame_height: number;
+  center: { x: number; y: number } | null;
+  bounding_box: { x: number; y: number; width: number; height: number } | null;
+  area: number | null;
+  quadrant: DetectionQuadrant | null;
+  simulated_motor: SimulatedMotor | null;
+  error: string | null;
+}
+
 export interface TelemetryErrorData {
   code: "uart_disconnected" | "telemetry_error";
   message: string;

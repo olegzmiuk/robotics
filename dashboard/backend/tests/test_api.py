@@ -1,17 +1,20 @@
+import asyncio
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from test_service import FakeClient
 from uav_dashboard.api import create_app
-from uav_dashboard.models import CameraStatusData
+from uav_dashboard.models import CameraDetectionData, CameraStatusData
 from uav_dashboard.service import TelemetryService
 
 
 class FakeCamera:
     def __init__(self) -> None:
         self.stopped = False
+        self.detection_unsubscribed = False
 
     def status(self) -> CameraStatusData:
         return CameraStatusData(
@@ -25,6 +28,29 @@ class FakeCamera:
 
     async def stream(self) -> AsyncIterator[bytes]:
         yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\nimage\r\n"
+
+    def subscribe_detections(self) -> asyncio.Queue[CameraDetectionData]:
+        queue: asyncio.Queue[CameraDetectionData] = asyncio.Queue(maxsize=1)
+        queue.put_nowait(
+            CameraDetectionData(
+                status="detected",
+                captured_at=datetime.now(timezone.utc),
+                last_detected_at=datetime.now(timezone.utc),
+                age_ms=0,
+                frame_width=640,
+                frame_height=360,
+                center={"x": 120, "y": 80},
+                bounding_box={"x": 80, "y": 40, "width": 80, "height": 80},
+                area=6400,
+                quadrant="top_left",
+                simulated_motor="M1",
+            )
+        )
+        return queue
+
+    async def unsubscribe_detections(self, queue: asyncio.Queue[CameraDetectionData]) -> None:
+        del queue
+        self.detection_unsubscribed = True
 
     async def stop(self) -> None:
         self.stopped = True
@@ -94,6 +120,25 @@ def test_websocket_streams_telemetry(tmp_path: Path) -> None:
         "pitch": -4.5,
         "yaw": 270.0,
     }
+
+
+def test_websocket_streams_camera_detection_decisions(tmp_path: Path) -> None:
+    camera = FakeCamera()
+    service = TelemetryService(port="/dev/fake", client_factory=FakeClient)
+
+    with (
+        TestClient(
+            create_app(service, camera_service=camera, frontend_dist=tmp_path / "missing")
+        ) as client,
+        client.websocket_connect("/api/camera/detection/ws") as websocket,
+    ):
+        event = websocket.receive_json()
+
+    assert event["type"] == "detection"
+    assert event["status"] == "detected"
+    assert event["quadrant"] == "top_left"
+    assert event["simulated_motor"] == "M1"
+    assert camera.detection_unsubscribed is True
 
 
 def test_websocket_keeps_running_after_serial_failure(tmp_path: Path) -> None:

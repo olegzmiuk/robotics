@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  cameraDetectionWebSocketUrl,
   fetchCameraStatus,
   fetchCommandLog,
   fetchTelemetry,
   telemetryWebSocketUrl,
 } from "./api";
 import type {
+  CameraDetectionData,
   CameraStatusData,
   CommandLogEntry,
   TelemetryErrorData,
@@ -17,6 +19,7 @@ const COMMAND_LOG_INTERVAL_MS = 1_000;
 const CAMERA_STATUS_INTERVAL_MS = 2_000;
 const CAMERA_RETRY_INTERVAL_MS = 2_000;
 const RECONNECT_INTERVAL_MS = 1_000;
+const DETECTION_QUADRANTS = ["top_left", "top_right", "bottom_left", "bottom_right"] as const;
 type StreamState = "connecting" | "live" | "offline";
 
 function formatTime(value: string): string {
@@ -102,11 +105,63 @@ function AttitudeIndicator({ snapshot }: { snapshot: TelemetrySnapshot }) {
   );
 }
 
+function CameraDecision({ detection }: { detection: CameraDetectionData | null }) {
+  const status = detection?.status ?? "none";
+  const active = status === "detected" || status === "holding";
+  const title = status === "detected"
+    ? "Target detected"
+    : status === "holding"
+      ? "Holding last target"
+      : status === "stale"
+        ? "Target stale"
+        : status === "error"
+          ? "Vision unavailable"
+          : "No target";
+  const detail = active && detection?.quadrant
+    ? detection.quadrant.replace("_", " ")
+    : status === "stale"
+      ? "Decision cleared"
+      : status === "error"
+        ? detection?.error ?? "Camera processing error"
+        : "Waiting for square";
+
+  return (
+    <div className={`camera-decision camera-decision-${status}`}>
+      <div className="camera-decision-heading">
+        <div>
+          <span>Vision response</span>
+          <strong>{title}</strong>
+        </div>
+        <b>{active ? `SIM ${detection?.simulated_motor}` : "OUTPUT NONE"}</b>
+      </div>
+      <div className="camera-decision-body">
+        <div className="quadrant-map" aria-label="Detected image quadrant">
+          {DETECTION_QUADRANTS.map((quadrant) => (
+            <span
+              className={active && detection?.quadrant === quadrant ? "quadrant-active" : ""}
+              key={quadrant}
+            >
+              {quadrant.split("_").map((part) => part[0]).join("").toUpperCase()}
+            </span>
+          ))}
+        </div>
+        <div className="camera-decision-copy">
+          <strong>{detail}</strong>
+          <small>
+            {detection?.age_ms != null ? `${Math.round(detection.age_ms)} ms old` : "Simulation only"}
+          </small>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CameraPanel() {
   const [status, setStatus] = useState<CameraStatusData | null>(null);
   const [streamAttempt, setStreamAttempt] = useState(0);
   const [imageReady, setImageReady] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [detection, setDetection] = useState<CameraDetectionData | null>(null);
 
   useEffect(() => {
     const updateStatus = async () => {
@@ -129,6 +184,32 @@ function CameraPanel() {
     }, CAMERA_RETRY_INTERVAL_MS);
     return () => window.clearTimeout(timer);
   }, [imageFailed]);
+
+  useEffect(() => {
+    let stopped = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      if (stopped) return;
+      socket = new WebSocket(cameraDetectionWebSocketUrl());
+      socket.addEventListener("message", (message) => {
+        setDetection(JSON.parse(String(message.data)) as CameraDetectionData);
+      });
+      socket.addEventListener("close", () => {
+        if (stopped) return;
+        reconnectTimer = window.setTimeout(connect, CAMERA_RETRY_INTERVAL_MS);
+      });
+      socket.addEventListener("error", () => socket?.close());
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, []);
 
   const cameraLive = imageReady || (status?.state === "streaming" && !imageFailed);
   const stateLabel = cameraLive ? "Live" : status?.state === "error" ? "Unavailable" : "Connecting";
@@ -162,6 +243,7 @@ function CameraPanel() {
         />
         <div className="camera-grid" />
         <div className="camera-reticle"><span /></div>
+        <CameraDecision detection={detection} />
         {!cameraLive && (
           <div className="camera-message">
             <span className="camera-icon">◉</span>

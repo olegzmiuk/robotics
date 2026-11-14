@@ -236,6 +236,15 @@ center points before being sent to every browser; frames without detections are
 forwarded unchanged. Detection remains visual-only and has no connection to
 motor output or flight control.
 
+The same shared camera process publishes the largest detection through
+`/api/camera/detection/ws`. The backend classifies its center into an image
+quadrant and the dashboard displays a simulation-only `M1`-`M4` decision. This
+mapping is only a UI placeholder and is not a Betaflight motor map. A missed
+detection is held briefly to avoid flicker, then becomes stale and clears the
+simulated output. An independent watchdog applies the same rule if camera
+frames stop completely. The default stale timeout is 0.4 seconds and can be
+changed with `UAV_DETECTION_STALE_TIMEOUT`.
+
 The default stream interval is 0.1 seconds. It can be changed when starting the
 backend, with a minimum of 0.05 seconds:
 
@@ -271,11 +280,10 @@ file with `uv lock` and commit both files.
 ## Next increments
 
 The dashboard, read-only telemetry, and live Camera Module 3 stream have passed
-Raspberry Pi hardware smoke tests. Live frames now use the existing square
-detector and show detections in the browser; this addition still needs a
-Raspberry Pi hardware smoke test. The next increment is the simulated quadrant
-response. Once that response is verified, a separate
-disabled-by-default bench adapter may issue bounded single-motor test pulses
-with propellers removed; automatic ARM, RC injection, configuration writes,
-and flight control remain outside the current scope.
+Raspberry Pi hardware smoke tests. Live square detection plus the simulated
+quadrant response are implemented and still need a Raspberry Pi smoke test as
+one complete path. After the camera orientation and physical motor numbering
+are verified, a separate disabled-by-default bench adapter may issue bounded
+single-motor test pulses with propellers removed; automatic ARM, RC injection,
+configuration writes, and flight control remain outside the current scope.
 
