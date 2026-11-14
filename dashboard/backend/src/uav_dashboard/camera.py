@@ -50,6 +50,7 @@ class CameraProcess(Protocol):
 
 CameraProcessFactory = Callable[[tuple[str, ...]], Awaitable[CameraProcess]]
 CameraFrameProcessor = Callable[[bytes], bytes]
+CameraDetectionObserver = Callable[[CameraDetectionData], None]
 Quadrant = Literal["top_left", "top_right", "bottom_left", "bottom_right"]
 SimulatedMotor = Literal["M1", "M2", "M3", "M4"]
 
@@ -340,6 +341,7 @@ class CameraService:
         detection_stale_timeout: float = 0.4,
         process_factory: CameraProcessFactory = create_camera_process,
         frame_processor: CameraFrameProcessor | None = None,
+        detection_observer: CameraDetectionObserver | None = None,
     ) -> None:
         if camera_index < 0:
             raise ValueError("camera_index must not be negative")
@@ -358,6 +360,7 @@ class CameraService:
         self.rotation = rotation
         self._process_factory = process_factory
         self._frame_processor = frame_processor
+        self._detection_observer = detection_observer
         self._jpeg_quality = quality
         self._detection_tracker = CameraDetectionTracker(detection_stale_timeout)
         self._detection_watch_interval = min(detection_stale_timeout / 2, 0.1)
@@ -535,6 +538,15 @@ class CameraService:
             self._task = None
             if self._state != "error":
                 self._state = "idle"
+                self._publish_detection(
+                    CameraDetectionData(
+                        status="error",
+                        captured_at=datetime.now(timezone.utc),
+                        frame_width=self.width,
+                        frame_height=self.height,
+                        error="Camera stream stopped",
+                    )
+                )
 
     async def _watch_detection_staleness(self) -> None:
         while True:
@@ -576,6 +588,8 @@ class CameraService:
             queue.put_nowait(item)
 
     def _publish_detection(self, event: CameraDetectionData) -> None:
+        if self._detection_observer is not None:
+            self._detection_observer(event)
         for queue in self._detection_subscribers.copy():
             if queue.full():
                 queue.get_nowait()

@@ -83,6 +83,30 @@ export interface CameraDetectionData {
   error: string | null;
 }
 
+export type VisionResponseState = "disabled" | "ready" | "simulated_pulse" | "cooldown" | "fault";
+
+export interface VisionResponseStateData {
+  state: VisionResponseState;
+  enabled: boolean;
+  simulated_only: true;
+  updated_at: string;
+  selected_motor: SimulatedMotor | null;
+  quadrant: DetectionQuadrant | null;
+  pulse_remaining_ms: number;
+  cooldown_remaining_ms: number;
+  target_latched: boolean;
+  reason: string;
+}
+
+export interface VisionResponseLogEntry {
+  timestamp: string;
+  event: string;
+  state: VisionResponseState;
+  selected_motor: SimulatedMotor | null;
+  quadrant: DetectionQuadrant | null;
+  reason: string;
+}
+
 export interface TelemetryErrorData {
   code: "uart_disconnected" | "telemetry_error";
   message: string;

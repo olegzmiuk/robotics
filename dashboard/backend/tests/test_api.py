@@ -7,8 +7,9 @@ import pytest
 from fastapi.testclient import TestClient
 from test_service import FakeClient
 from uav_dashboard.api import create_app
-from uav_dashboard.models import CameraDetectionData, CameraStatusData
+from uav_dashboard.models import CameraDetectionData, CameraStatusData, TelemetryStreamData
 from uav_dashboard.service import TelemetryService
+from uav_dashboard.vision_response import VisionResponseController
 
 
 class FakeCamera:
@@ -71,6 +72,33 @@ def test_api_returns_telemetry_and_command_log(tmp_path: Path) -> None:
     ]
     assert commands_response.status_code == 200
     assert len(commands_response.json()) == 4
+
+
+def test_api_enables_and_disables_simulated_vision_response(tmp_path: Path) -> None:
+    service = TelemetryService(port="/dev/fake", client_factory=FakeClient)
+    response_controller = VisionResponseController()
+    response_controller.observe_telemetry(TelemetryStreamData.model_construct(snapshot=None))
+
+    with TestClient(
+        create_app(
+            service,
+            vision_response_controller=response_controller,
+            frontend_dist=tmp_path / "missing",
+        )
+    ) as client:
+        initial = client.get("/api/vision-response")
+        enabled = client.post("/api/vision-response/enabled", json={"enabled": True})
+        with client.websocket_connect("/api/vision-response/ws") as websocket:
+            streamed = websocket.receive_json()
+        journal = client.get("/api/vision-response/journal")
+        disabled = client.post("/api/vision-response/enabled", json={"enabled": False})
+
+    assert initial.json()["state"] == "disabled"
+    assert enabled.json()["state"] == "ready"
+    assert enabled.json()["simulated_only"] is True
+    assert streamed["state"] == "ready"
+    assert journal.json()[0]["event"] == "enabled"
+    assert disabled.json()["state"] == "disabled"
 
 
 def test_api_returns_503_for_serial_failure(tmp_path: Path) -> None:

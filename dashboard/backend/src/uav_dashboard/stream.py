@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import suppress
 from typing import Literal
 
@@ -23,6 +24,7 @@ class TelemetryBroadcaster:
         interval: float = 0.1,
         slow_interval: float = 1.0,
         reconnect_interval: float = 1.0,
+        event_observer: Callable[[TelemetryStreamEvent], None] | None = None,
     ) -> None:
         if interval < 0.05:
             raise ValueError("telemetry interval must be at least 0.05 seconds")
@@ -35,6 +37,7 @@ class TelemetryBroadcaster:
         self._interval = interval
         self._slow_interval = slow_interval
         self._reconnect_interval = reconnect_interval
+        self._event_observer = event_observer
         self._subscribers: set[asyncio.Queue[TelemetryStreamEvent]] = set()
         self._subscribers_changed = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -117,6 +120,8 @@ class TelemetryBroadcaster:
                 await asyncio.to_thread(self._service.stop_stream)
 
     def _publish(self, event: TelemetryStreamEvent) -> None:
+        if self._event_observer is not None:
+            self._event_observer(event)
         for queue in self._subscribers.copy():
             if queue.full():
                 queue.get_nowait()

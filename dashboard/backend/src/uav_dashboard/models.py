@@ -115,6 +115,34 @@ class CameraDetectionData(FrozenModel):
     error: str | None = None
 
 
+class VisionResponseStateData(FrozenModel):
+    """Current state of the simulation-only vision response controller."""
+
+    state: Literal["disabled", "ready", "simulated_pulse", "cooldown", "fault"]
+    enabled: bool
+    simulated_only: Literal[True] = True
+    updated_at: datetime
+    selected_motor: Literal["M1", "M2", "M3", "M4"] | None = None
+    quadrant: Literal["top_left", "top_right", "bottom_left", "bottom_right"] | None = None
+    pulse_remaining_ms: float = 0.0
+    cooldown_remaining_ms: float = 0.0
+    target_latched: bool = False
+    reason: str
+
+
+class VisionResponseLogEntry(FrozenModel):
+    timestamp: datetime
+    event: str
+    state: Literal["disabled", "ready", "simulated_pulse", "cooldown", "fault"]
+    selected_motor: Literal["M1", "M2", "M3", "M4"] | None = None
+    quadrant: Literal["top_left", "top_right", "bottom_left", "bottom_right"] | None = None
+    reason: str
+
+
+class VisionResponseEnabledRequest(FrozenModel):
+    enabled: bool
+
+
 class TelemetryStreamData(FrozenModel):
     """Successful telemetry event sent over the dashboard WebSocket."""
 

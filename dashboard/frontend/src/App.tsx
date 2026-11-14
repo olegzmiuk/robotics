@@ -4,7 +4,10 @@ import {
   fetchCameraStatus,
   fetchCommandLog,
   fetchTelemetry,
+  fetchVisionResponseJournal,
+  setVisionResponseEnabled,
   telemetryWebSocketUrl,
+  visionResponseWebSocketUrl,
 } from "./api";
 import type {
   CameraDetectionData,
@@ -13,12 +16,15 @@ import type {
   TelemetryErrorData,
   TelemetrySnapshot,
   TelemetryStreamEvent,
+  VisionResponseLogEntry,
+  VisionResponseStateData,
 } from "./types";
 
 const COMMAND_LOG_INTERVAL_MS = 1_000;
 const CAMERA_STATUS_INTERVAL_MS = 2_000;
 const CAMERA_RETRY_INTERVAL_MS = 2_000;
 const RECONNECT_INTERVAL_MS = 1_000;
+const VISION_RESPONSE_JOURNAL_INTERVAL_MS = 1_000;
 const DETECTION_QUADRANTS = ["top_left", "top_right", "bottom_left", "bottom_right"] as const;
 type StreamState = "connecting" | "live" | "offline";
 
@@ -293,6 +299,127 @@ function CommandLog({ entries }: { entries: CommandLogEntry[] }) {
   );
 }
 
+function VisionResponsePanel() {
+  const [response, setResponse] = useState<VisionResponseStateData | null>(null);
+  const [journal, setJournal] = useState<VisionResponseLogEntry[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stopped = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      if (stopped) return;
+      socket = new WebSocket(visionResponseWebSocketUrl());
+      socket.addEventListener("message", (message) => {
+        setResponse(JSON.parse(String(message.data)) as VisionResponseStateData);
+        setRequestError(null);
+      });
+      socket.addEventListener("close", () => {
+        if (stopped) return;
+        reconnectTimer = window.setTimeout(connect, RECONNECT_INTERVAL_MS);
+      });
+      socket.addEventListener("error", () => socket?.close());
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    const update = async () => {
+      try {
+        setJournal(await fetchVisionResponseJournal());
+      } catch {
+        // The live state error is displayed separately.
+      }
+    };
+    void update();
+    const timer = window.setInterval(() => void update(), VISION_RESPONSE_JOURNAL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const toggleEnabled = async () => {
+    if (!response || busy) return;
+    setBusy(true);
+    try {
+      setResponse(await setVisionResponseEnabled(!response.enabled));
+      setJournal(await fetchVisionResponseJournal());
+      setRequestError(null);
+    } catch (responseError) {
+      setRequestError(responseError instanceof Error ? responseError.message : "Request failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const state = response?.state ?? "disabled";
+  const output = response?.state === "simulated_pulse" && response.selected_motor
+    ? `SIM ${response.selected_motor}`
+    : "ZERO";
+
+  return (
+    <section className={`panel response-panel response-${state}`}>
+      <div className="panel-heading">
+        <div>
+          <span className="eyebrow">Simulation-only safety path</span>
+          <h2>Vision response dry run</h2>
+        </div>
+        <div className="response-heading-actions">
+          <span className={`badge ${state === "fault" ? "badge-error" : response?.enabled ? "badge-warn" : "badge-muted"}`}>
+            {state.replace("_", " ")}
+          </span>
+          <button
+            className={response?.enabled ? "response-disable" : "response-enable"}
+            disabled={!response || busy}
+            onClick={() => void toggleEnabled()}
+            type="button"
+          >
+            {busy ? "Updating…" : response?.enabled ? "Disable dry run" : "Enable dry run"}
+          </button>
+        </div>
+      </div>
+      <div className="response-content">
+        <div className="response-output">
+          <span>Simulated output</span>
+          <strong>{output}</strong>
+          <small>No MSP writes · No physical motor output</small>
+        </div>
+        <div className="response-state-grid">
+          <Metric label="Quadrant" value={response?.quadrant?.replace("_", " ") ?? "—"} />
+          <Metric label="Pulse remaining" value={Math.round(response?.pulse_remaining_ms ?? 0)} unit="ms" />
+          <Metric label="Cooldown" value={Math.round(response?.cooldown_remaining_ms ?? 0)} unit="ms" />
+          <Metric label="Target latch" value={response?.target_latched ? "SET" : "CLEAR"} />
+        </div>
+        <div className="response-reason">
+          <span className="metric-label">Decision reason</span>
+          <strong>{requestError ?? response?.reason ?? "Waiting for controller state"}</strong>
+        </div>
+        <div className="response-journal">
+          <span className="metric-label">Decision journal</span>
+          <div>
+            {journal.length === 0 ? (
+              <small>No simulated decisions yet</small>
+            ) : journal.slice(0, 5).map((entry, index) => (
+              <p key={`${entry.timestamp}-${entry.event}-${index}`}>
+                <time>{formatTime(entry.timestamp)}</time>
+                <b>{entry.event.replace("_", " ")}</b>
+                <span>{entry.selected_motor ? `${entry.selected_motor} · ` : ""}{entry.reason}</span>
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
   const [commands, setCommands] = useState<CommandLogEntry[]>([]);
@@ -420,6 +547,8 @@ export default function App() {
       <div className="dashboard-grid">
         <CameraPanel />
         {snapshot ? <AttitudeIndicator snapshot={snapshot} /> : <section className="panel skeleton-panel" />}
+
+        <VisionResponsePanel />
 
         <section className="panel power-panel">
           <div className="panel-heading"><div><span className="eyebrow">Power system</span><h2>Battery telemetry</h2></div><span className="badge badge-safe">Read only</span></div>

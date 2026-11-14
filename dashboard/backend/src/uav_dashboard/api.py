@@ -15,15 +15,25 @@ from fastapi.staticfiles import StaticFiles
 from uav.msp import MspError
 
 from uav_dashboard.camera import MJPEG_BOUNDARY, CameraService, CameraSource
-from uav_dashboard.models import CameraStatusData, CommandLogEntry, HealthData, TelemetrySnapshot
+from uav_dashboard.models import (
+    CameraStatusData,
+    CommandLogEntry,
+    HealthData,
+    TelemetrySnapshot,
+    VisionResponseEnabledRequest,
+    VisionResponseLogEntry,
+    VisionResponseStateData,
+)
 from uav_dashboard.service import TelemetryService
 from uav_dashboard.stream import TelemetryBroadcaster
+from uav_dashboard.vision_response import VisionResponseController
 
 
 def create_app(
     telemetry_service: TelemetryService | None = None,
     *,
     camera_service: CameraSource | None = None,
+    vision_response_controller: VisionResponseController | None = None,
     frontend_dist: Path | None = None,
 ) -> FastAPI:
     """Create an API app with injectable hardware access for tests."""
@@ -32,11 +42,16 @@ def create_app(
         baud_rate=int(os.getenv("UAV_SERIAL_BAUD_RATE", "115200")),
         timeout=float(os.getenv("UAV_SERIAL_TIMEOUT", "2.0")),
     )
+    response_controller = vision_response_controller or VisionResponseController(
+        pulse_duration=float(os.getenv("UAV_SIMULATED_PULSE_DURATION", "0.2")),
+        cooldown_duration=float(os.getenv("UAV_SIMULATED_PULSE_COOLDOWN", "1.0")),
+    )
     broadcaster = TelemetryBroadcaster(
         service,
         interval=float(os.getenv("UAV_TELEMETRY_INTERVAL", "0.1")),
         slow_interval=float(os.getenv("UAV_SLOW_TELEMETRY_INTERVAL", "1.0")),
         reconnect_interval=float(os.getenv("UAV_TELEMETRY_RECONNECT_INTERVAL", "1.0")),
+        event_observer=response_controller.observe_telemetry,
     )
     camera = camera_service or CameraService(
         executable=os.getenv("UAV_CAMERA_COMMAND", "rpicam-vid"),
@@ -47,6 +62,7 @@ def create_app(
         quality=int(os.getenv("UAV_CAMERA_JPEG_QUALITY", "70")),
         rotation=int(os.getenv("UAV_CAMERA_ROTATION", "180")),
         detection_stale_timeout=float(os.getenv("UAV_DETECTION_STALE_TIMEOUT", "0.4")),
+        detection_observer=response_controller.observe_detection,
     )
 
     @asynccontextmanager
@@ -59,7 +75,7 @@ def create_app(
             await camera.stop()
             await broadcaster.stop()
 
-    app = FastAPI(title="UAV Dashboard API", version="0.3.0", lifespan=lifespan)
+    app = FastAPI(title="UAV Dashboard API", version="0.4.0", lifespan=lifespan)
 
     allowed_origins = os.getenv(
         "UAV_DASHBOARD_CORS_ORIGINS",
@@ -69,7 +85,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=[origin.strip() for origin in allowed_origins if origin.strip()],
         allow_credentials=False,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
@@ -91,6 +107,30 @@ def create_app(
     @app.get("/api/commands", response_model=list[CommandLogEntry])
     async def commands() -> list[CommandLogEntry]:
         return service.command_log()
+
+    @app.get("/api/vision-response", response_model=VisionResponseStateData)
+    async def vision_response() -> VisionResponseStateData:
+        return response_controller.snapshot()
+
+    @app.get("/api/vision-response/journal", response_model=list[VisionResponseLogEntry])
+    async def vision_response_journal() -> list[VisionResponseLogEntry]:
+        return response_controller.journal()
+
+    @app.post("/api/vision-response/enabled", response_model=VisionResponseStateData)
+    async def set_vision_response_enabled(
+        request: VisionResponseEnabledRequest,
+    ) -> VisionResponseStateData:
+        return response_controller.set_enabled(request.enabled)
+
+    @app.websocket("/api/vision-response/ws")
+    async def vision_response_stream(websocket: WebSocket) -> None:
+        await websocket.accept()
+        try:
+            while True:
+                await websocket.send_text(response_controller.snapshot().model_dump_json())
+                await asyncio.sleep(0.05)
+        except WebSocketDisconnect:
+            pass
 
     @app.get("/api/camera/status", response_model=CameraStatusData)
     async def camera_status() -> CameraStatusData:

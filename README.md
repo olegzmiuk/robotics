@@ -245,6 +245,27 @@ simulated output. An independent watchdog applies the same rule if camera
 frames stop completely. The default stale timeout is 0.4 seconds and can be
 changed with `UAV_DETECTION_STALE_TIMEOUT`.
 
+The `Vision response dry run` panel exercises the next decision layer without
+writing to the flight controller. It is disabled by default and requires an
+explicit dashboard action plus healthy UART telemetry. One fresh target starts
+one 200 ms simulated pulse, then a one-second cooldown; the target must clear
+before another pulse. Holding never starts a pulse, while stale detection,
+camera failure, UART failure, disabling, or camera shutdown clears the selected
+output. Camera shutdown leaves the dry run faulted so the operator must
+explicitly disable and re-enable it after reconnecting. The panel shows the
+current state and a separate decision journal.
+
+The dry-run timings can be adjusted without rebuilding:
+
+```bash
+UAV_SIMULATED_PULSE_DURATION=0.2 \
+UAV_SIMULATED_PULSE_COOLDOWN=1.0 \
+uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
+```
+
+These values control simulation only. There is still no MSP motor command,
+ARM command, RC injection, or physical output path.
+
 The default stream interval is 0.1 seconds. It can be changed when starting the
 backend, with a minimum of 0.05 seconds:
 
@@ -280,10 +301,11 @@ file with `uv lock` and commit both files.
 ## Next increments
 
 The dashboard, read-only telemetry, and live Camera Module 3 stream have passed
-Raspberry Pi hardware smoke tests. Live square detection plus the simulated
-quadrant response are implemented and still need a Raspberry Pi smoke test as
-one complete path. After the camera orientation and physical motor numbering
-are verified, a separate disabled-by-default bench adapter may issue bounded
-single-motor test pulses with propellers removed; automatic ARM, RC injection,
-configuration writes, and flight control remain outside the current scope.
+Raspberry Pi hardware smoke tests. Live square detection, quadrant decisions,
+and the fail-closed dry-run pulse state machine are implemented and still need
+a Raspberry Pi smoke test as one complete path. After that test, the camera
+orientation and physical motor numbering must be verified before a separate
+disabled-by-default bench adapter may issue bounded single-motor test pulses
+with propellers removed. Automatic ARM, RC injection, configuration writes,
+and flight control remain outside the current scope.
 
