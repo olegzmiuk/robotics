@@ -16,3 +16,9 @@ export function fetchTelemetry(): Promise<TelemetrySnapshot> {
 export function fetchCommandLog(): Promise<CommandLogEntry[]> {
   return getJson<CommandLogEntry[]>("/api/commands");
 }
+
+export function telemetryWebSocketUrl(): string {
+  const url = new URL("/api/telemetry/ws", window.location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}

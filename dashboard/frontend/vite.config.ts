@@ -10,6 +10,7 @@ export default defineConfig({
       "/api": {
         target: backendTarget,
         changeOrigin: true,
+        ws: true,
       },
     },
   },

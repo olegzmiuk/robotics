@@ -52,3 +52,7 @@ export interface CommandLogEntry {
   duration_ms: number;
   error: string | null;
 }
+
+export type TelemetryStreamEvent =
+  | { type: "telemetry"; snapshot: TelemetrySnapshot }
+  | { type: "error"; message: string };

@@ -34,3 +34,35 @@ def test_api_returns_503_for_serial_failure(tmp_path: Path) -> None:
 
     assert response.status_code == 503
     assert response.json() == {"detail": "status timeout"}
+
+
+def test_websocket_streams_telemetry(tmp_path: Path) -> None:
+    service = TelemetryService(port="/dev/fake", client_factory=FakeClient)
+
+    with (
+        TestClient(create_app(service, frontend_dist=tmp_path / "missing")) as client,
+        client.websocket_connect("/api/telemetry/ws") as websocket,
+    ):
+        event = websocket.receive_json()
+
+    assert event["type"] == "telemetry"
+    assert event["snapshot"]["attitude"] == {
+        "roll": 12.3,
+        "pitch": -4.5,
+        "yaw": 270.0,
+    }
+
+
+def test_websocket_keeps_running_after_serial_failure(tmp_path: Path) -> None:
+    service = TelemetryService(
+        port="/dev/fake",
+        client_factory=lambda: FakeClient(fail_status=True),
+    )
+
+    with (
+        TestClient(create_app(service, frontend_dist=tmp_path / "missing")) as client,
+        client.websocket_connect("/api/telemetry/ws") as websocket,
+    ):
+        event = websocket.receive_json()
+
+    assert event == {"type": "error", "message": "status timeout"}

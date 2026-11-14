@@ -1,6 +1,6 @@
 .DS_Store
 .venv/
-node_modules/
+*node_modules/
 *.tsbuildinfo
 __pycache__/
 *.py[cod]

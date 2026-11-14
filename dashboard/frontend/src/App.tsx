@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchCommandLog, fetchTelemetry } from "./api";
-import type { CommandLogEntry, TelemetrySnapshot } from "./types";
+import { fetchCommandLog, fetchTelemetry, telemetryWebSocketUrl } from "./api";
+import type { CommandLogEntry, TelemetrySnapshot, TelemetryStreamEvent } from "./types";
 
-const REFRESH_INTERVAL_MS = 1_000;
+const COMMAND_LOG_INTERVAL_MS = 1_000;
+const RECONNECT_INTERVAL_MS = 1_000;
+type StreamState = "connecting" | "live" | "offline";
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -126,6 +128,7 @@ export default function App() {
   const [commands, setCommands] = useState<CommandLogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [streamState, setStreamState] = useState<StreamState>("connecting");
   const requestInFlight = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -151,12 +154,55 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+    let stopped = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
 
-  const connected = snapshot?.connected === true && error === null;
+    const connect = () => {
+      if (stopped) return;
+      setStreamState("connecting");
+      socket = new WebSocket(telemetryWebSocketUrl());
+
+      socket.addEventListener("open", () => setStreamState("live"));
+      socket.addEventListener("message", (message) => {
+        const event = JSON.parse(String(message.data)) as TelemetryStreamEvent;
+        if (event.type === "telemetry") {
+          setSnapshot(event.snapshot);
+          setError(null);
+        } else {
+          setError(event.message);
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (stopped) return;
+        setStreamState("offline");
+        reconnectTimer = window.setTimeout(connect, RECONNECT_INTERVAL_MS);
+      });
+      socket.addEventListener("error", () => socket?.close());
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateCommands = async () => {
+      try {
+        setCommands(await fetchCommandLog());
+      } catch {
+        // Telemetry stream errors are displayed separately.
+      }
+    };
+    void updateCommands();
+    const timer = window.setInterval(() => void updateCommands(), COMMAND_LOG_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const connected = snapshot?.connected === true && error === null && streamState === "live";
 
   return (
     <main className="app-shell">
@@ -171,7 +217,7 @@ export default function App() {
         <div className="topbar-actions">
           <div className={`connection ${connected ? "connection-online" : "connection-offline"}`}>
             <span className="status-dot" />
-            <div><strong>{connected ? "Flight controller online" : "Flight controller offline"}</strong><small>{snapshot?.serial_port ?? "/dev/ttyAMA0"}</small></div>
+            <div><strong>{connected ? "Flight controller online" : streamState === "connecting" ? "Connecting telemetry" : "Flight controller offline"}</strong><small>{snapshot?.serial_port ?? "/dev/ttyAMA0"} · {streamState === "live" ? "live stream" : streamState}</small></div>
           </div>
           <button type="button" onClick={() => void refresh()} disabled={refreshing}>
             <span className={refreshing ? "spin" : ""}>↻</span> {refreshing ? "Polling" : "Refresh"}

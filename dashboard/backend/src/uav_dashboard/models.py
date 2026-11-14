@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -72,3 +73,17 @@ class HealthData(FrozenModel):
     status: str
     flight_controller_connected: bool
     serial_port: str
+
+
+class TelemetryStreamData(FrozenModel):
+    """Successful telemetry event sent over the dashboard WebSocket."""
+
+    type: Literal["telemetry"] = "telemetry"
+    snapshot: TelemetrySnapshot
+
+
+class TelemetryStreamError(FrozenModel):
+    """Recoverable telemetry error sent while the stream remains open."""
+
+    type: Literal["error"] = "error"
+    message: str

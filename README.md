@@ -184,9 +184,19 @@ Then open `http://raspberrypi.local:8000` from the MacBook. Node.js is needed
 only to build the frontend; it is not a second production backend process.
 
 The first dashboard milestone provides telemetry snapshots, connection and
-error states, an MSP command journal, automatic one-second refresh, an attitude
-indicator, battery and controller status, and a reserved camera panel. All API
-routes are read-only. Camera streaming is not implemented yet.
+error states, an MSP command journal, a shared 10 Hz WebSocket stream, an
+attitude indicator, battery and controller status, and a reserved camera panel.
+The backend polls MSP only while at least one browser is connected, regardless
+of how many dashboard tabs subscribe. All API routes are read-only. Camera
+streaming is not implemented yet.
+
+The default stream interval is 0.1 seconds. It can be changed when starting the
+backend, with a minimum of 0.05 seconds:
+
+```bash
+UAV_TELEMETRY_INTERVAL=0.2 uv run --locked uvicorn \
+  uav_dashboard.api:app --host 0.0.0.0 --port 8000
+```
 
 ## Run the checks
 

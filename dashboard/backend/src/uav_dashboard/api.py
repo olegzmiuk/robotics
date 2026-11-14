@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from uav.msp import MspError
 
 from uav_dashboard.models import CommandLogEntry, HealthData, TelemetrySnapshot
 from uav_dashboard.service import TelemetryService
+from uav_dashboard.stream import TelemetryBroadcaster
 
 
 def create_app(
@@ -26,7 +29,21 @@ def create_app(
         baud_rate=int(os.getenv("UAV_SERIAL_BAUD_RATE", "115200")),
         timeout=float(os.getenv("UAV_SERIAL_TIMEOUT", "2.0")),
     )
-    app = FastAPI(title="UAV Dashboard API", version="0.1.0")
+    broadcaster = TelemetryBroadcaster(
+        service,
+        interval=float(os.getenv("UAV_TELEMETRY_INTERVAL", "0.1")),
+    )
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        del app
+        broadcaster.start()
+        try:
+            yield
+        finally:
+            await broadcaster.stop()
+
+    app = FastAPI(title="UAV Dashboard API", version="0.2.0", lifespan=lifespan)
 
     allowed_origins = os.getenv(
         "UAV_DASHBOARD_CORS_ORIGINS",
@@ -58,6 +75,19 @@ def create_app(
     @app.get("/api/commands", response_model=list[CommandLogEntry])
     async def commands() -> list[CommandLogEntry]:
         return service.command_log()
+
+    @app.websocket("/api/telemetry/ws")
+    async def telemetry_stream(websocket: WebSocket) -> None:
+        await websocket.accept()
+        queue = broadcaster.subscribe()
+        try:
+            while True:
+                event = await queue.get()
+                await websocket.send_text(event.model_dump_json())
+        except WebSocketDisconnect:
+            pass
+        finally:
+            broadcaster.unsubscribe(queue)
 
     static_directory = frontend_dist or (Path(__file__).resolve().parents[3] / "frontend" / "dist")
     if static_directory.is_dir():
