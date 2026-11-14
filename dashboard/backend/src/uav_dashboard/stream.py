@@ -14,12 +14,24 @@ TelemetryStreamEvent = TelemetryStreamData | TelemetryStreamError
 class TelemetryBroadcaster:
     """Poll MSP once and deliver the latest event to every browser."""
 
-    def __init__(self, service: TelemetryService, interval: float = 0.1) -> None:
+    def __init__(
+        self,
+        service: TelemetryService,
+        interval: float = 0.1,
+        slow_interval: float = 1.0,
+        reconnect_interval: float = 1.0,
+    ) -> None:
         if interval < 0.05:
             raise ValueError("telemetry interval must be at least 0.05 seconds")
+        if slow_interval < interval:
+            raise ValueError("slow telemetry interval must not be shorter than attitude interval")
+        if reconnect_interval < 0.1:
+            raise ValueError("reconnect interval must be at least 0.1 seconds")
 
         self._service = service
         self._interval = interval
+        self._slow_interval = slow_interval
+        self._reconnect_interval = reconnect_interval
         self._subscribers: set[asyncio.Queue[TelemetryStreamEvent]] = set()
         self._subscribers_changed = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -52,22 +64,45 @@ class TelemetryBroadcaster:
         self._subscribers_changed.set()
 
     async def _run(self) -> None:
-        while True:
-            if not self._subscribers:
-                self._subscribers_changed.clear()
-                await self._subscribers_changed.wait()
-                continue
+        stream_started = False
+        next_slow_refresh = 0.0
+        try:
+            while True:
+                if not self._subscribers:
+                    if stream_started:
+                        await asyncio.to_thread(self._service.stop_stream)
+                        stream_started = False
+                    self._subscribers_changed.clear()
+                    await self._subscribers_changed.wait()
+                    continue
 
-            started_at = asyncio.get_running_loop().time()
-            try:
-                snapshot = await asyncio.to_thread(self._service.read_snapshot)
-                event: TelemetryStreamEvent = TelemetryStreamData(snapshot=snapshot)
-            except Exception as error:
-                event = TelemetryStreamError(message=str(error))
+                if not stream_started:
+                    await asyncio.to_thread(self._service.start_stream)
+                    stream_started = True
+                    next_slow_refresh = 0.0
 
-            self._publish(event)
-            elapsed = asyncio.get_running_loop().time() - started_at
-            await asyncio.sleep(max(0.0, self._interval - elapsed))
+                started_at = asyncio.get_running_loop().time()
+                refresh_slow = started_at >= next_slow_refresh
+                try:
+                    snapshot = await asyncio.to_thread(
+                        self._service.read_stream_snapshot,
+                        refresh_slow=refresh_slow,
+                    )
+                    event: TelemetryStreamEvent = TelemetryStreamData(snapshot=snapshot)
+                    if refresh_slow:
+                        next_slow_refresh = started_at + self._slow_interval
+                    delay = self._interval
+                except Exception as error:
+                    event = TelemetryStreamError(message=str(error))
+                    next_slow_refresh = 0.0
+                    delay = self._reconnect_interval
+
+                self._publish(event)
+                elapsed = asyncio.get_running_loop().time() - started_at
+                await asyncio.sleep(max(0.0, delay - elapsed))
+        finally:
+            if stream_started:
+                await asyncio.to_thread(self._service.stop_stream)
 
     def _publish(self, event: TelemetryStreamEvent) -> None:
         for queue in self._subscribers.copy():

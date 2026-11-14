@@ -79,6 +79,12 @@ class TelemetryService:
         self._state_lock = Lock()
         self._command_log: deque[CommandLogEntry] = deque(maxlen=command_log_size)
         self._connected = False
+        self._stream_active = False
+        self._stream_client_context: TelemetryClient | None = None
+        self._stream_client: TelemetryClient | None = None
+        self._stream_api_version: ApiVersion | None = None
+        self._stream_status: FlightControllerStatus | None = None
+        self._stream_analog: AnalogTelemetry | None = None
 
     @property
     def connected(self) -> bool:
@@ -94,20 +100,89 @@ class TelemetryService:
     def read_snapshot(self) -> TelemetrySnapshot:
         """Read one complete snapshot without interleaving serial requests."""
         with self._serial_lock:
+            if self._stream_active:
+                return self._read_stream_snapshot_locked(refresh_slow=True)
+
             try:
                 with self._client_factory() as client:
-                    api_version = self._execute(
-                        "MSP_API_VERSION", MSP_API_VERSION, client.api_version
-                    )
-                    status = self._execute("MSP_STATUS", MSP_STATUS, client.status)
-                    attitude = self._execute("MSP_ATTITUDE", MSP_ATTITUDE, client.attitude)
-                    analog = self._execute("MSP_ANALOG", MSP_ANALOG, client.analog)
+                    snapshot = self._read_complete_snapshot(client)
             except Exception:
                 self._set_connected(False)
                 raise
 
             self._set_connected(True)
-            return self._build_snapshot(api_version, status, attitude, analog)
+            return snapshot
+
+    def start_stream(self) -> None:
+        """Enable persistent serial access for WebSocket telemetry."""
+        with self._serial_lock:
+            self._stream_active = True
+
+    def stop_stream(self) -> None:
+        """Close the persistent serial client and clear cached telemetry."""
+        with self._serial_lock:
+            self._stream_active = False
+            self._close_stream_client_locked()
+            self._set_connected(False)
+
+    def read_stream_snapshot(self, *, refresh_slow: bool = False) -> TelemetrySnapshot:
+        """Read fast attitude and optionally refresh slow telemetry fields."""
+        with self._serial_lock:
+            if not self._stream_active:
+                raise RuntimeError("telemetry stream is not active")
+            return self._read_stream_snapshot_locked(refresh_slow=refresh_slow)
+
+    def _read_stream_snapshot_locked(self, *, refresh_slow: bool) -> TelemetrySnapshot:
+        try:
+            client = self._ensure_stream_client_locked()
+            if self._stream_api_version is None:
+                self._stream_api_version = self._execute(
+                    "MSP_API_VERSION", MSP_API_VERSION, client.api_version
+                )
+            if refresh_slow or self._stream_status is None:
+                self._stream_status = self._execute("MSP_STATUS", MSP_STATUS, client.status)
+            if refresh_slow or self._stream_analog is None:
+                self._stream_analog = self._execute("MSP_ANALOG", MSP_ANALOG, client.analog)
+
+            attitude = self._execute("MSP_ATTITUDE", MSP_ATTITUDE, client.attitude)
+            snapshot = self._build_snapshot(
+                self._stream_api_version,
+                self._stream_status,
+                attitude,
+                self._stream_analog,
+            )
+        except Exception:
+            self._set_connected(False)
+            self._close_stream_client_locked()
+            raise
+
+        self._set_connected(True)
+        return snapshot
+
+    def _ensure_stream_client_locked(self) -> TelemetryClient:
+        if self._stream_client is None:
+            context = self._client_factory()
+            client = context.__enter__()
+            self._stream_client_context = context
+            self._stream_client = client
+        return self._stream_client
+
+    def _close_stream_client_locked(self) -> None:
+        context = self._stream_client_context
+        self._stream_client_context = None
+        self._stream_client = None
+        self._stream_api_version = None
+        self._stream_status = None
+        self._stream_analog = None
+        if context is not None:
+            context.__exit__(None, None, None)
+
+    def _read_complete_snapshot(self, client: TelemetryClient) -> TelemetrySnapshot:
+        api_version = self._execute("MSP_API_VERSION", MSP_API_VERSION, client.api_version)
+        status = self._execute("MSP_STATUS", MSP_STATUS, client.status)
+        attitude = self._execute("MSP_ATTITUDE", MSP_ATTITUDE, client.attitude)
+        analog = self._execute("MSP_ANALOG", MSP_ANALOG, client.analog)
+        return self._build_snapshot(api_version, status, attitude, analog)
 
     def _execute(
         self,

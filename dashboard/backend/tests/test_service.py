@@ -18,6 +18,10 @@ class FakeClient:
     def __init__(self, *, fail_status: bool = False) -> None:
         self.fail_status = fail_status
         self.closed = False
+        self.api_version_calls = 0
+        self.status_calls = 0
+        self.attitude_calls = 0
+        self.analog_calls = 0
 
     def __enter__(self) -> FakeClient:
         return self
@@ -31,9 +35,11 @@ class FakeClient:
         self.closed = True
 
     def api_version(self) -> ApiVersion:
+        self.api_version_calls += 1
         return ApiVersion(protocol=0, major=1, minor=45)
 
     def status(self) -> FlightControllerStatus:
+        self.status_calls += 1
         if self.fail_status:
             raise MspTimeoutError("status timeout")
         return FlightControllerStatus(
@@ -50,9 +56,11 @@ class FakeClient:
         )
 
     def attitude(self) -> Attitude:
+        self.attitude_calls += 1
         return Attitude(roll=12.3, pitch=-4.5, yaw=270.0)
 
     def analog(self) -> AnalogTelemetry:
+        self.analog_calls += 1
         return AnalogTelemetry(
             battery_voltage=25.18,
             legacy_battery_voltage=25.2,
@@ -97,3 +105,63 @@ def test_failed_command_marks_service_disconnected_and_is_logged() -> None:
     assert latest.command == "MSP_STATUS"
     assert latest.ok is False
     assert latest.error == "status timeout"
+
+
+def test_stream_reuses_connection_and_schedules_fast_and_slow_commands() -> None:
+    clients: list[FakeClient] = []
+
+    def create_client() -> FakeClient:
+        client = FakeClient()
+        clients.append(client)
+        return client
+
+    service = TelemetryService(port="/dev/fake", client_factory=create_client)
+
+    service.start_stream()
+    first = service.read_stream_snapshot()
+    second = service.read_stream_snapshot()
+    third = service.read_stream_snapshot(refresh_slow=True)
+    service.stop_stream()
+
+    assert first.attitude.roll == second.attitude.roll == third.attitude.roll == 12.3
+    assert len(clients) == 1
+    assert clients[0].api_version_calls == 1
+    assert clients[0].status_calls == 2
+    assert clients[0].analog_calls == 2
+    assert clients[0].attitude_calls == 3
+    assert clients[0].closed is True
+    assert service.connected is False
+
+
+def test_manual_snapshot_reuses_active_stream_connection() -> None:
+    client = FakeClient()
+    service = TelemetryService(port="/dev/fake", client_factory=lambda: client)
+
+    service.start_stream()
+    service.read_stream_snapshot()
+    service.read_snapshot()
+    service.stop_stream()
+
+    assert client.api_version_calls == 1
+    assert client.status_calls == 2
+    assert client.analog_calls == 2
+    assert client.attitude_calls == 2
+
+
+def test_stream_reconnects_after_command_failure() -> None:
+    clients = [FakeClient(fail_status=True), FakeClient()]
+    client_iterator = iter(clients)
+    service = TelemetryService(port="/dev/fake", client_factory=lambda: next(client_iterator))
+
+    service.start_stream()
+    with pytest.raises(MspTimeoutError, match="status timeout"):
+        service.read_stream_snapshot()
+
+    snapshot = service.read_stream_snapshot()
+    service.stop_stream()
+
+    assert clients[0].closed is True
+    assert clients[1].api_version_calls == 1
+    assert clients[1].status_calls == 1
+    assert snapshot.connected is True
+    assert clients[1].closed is True

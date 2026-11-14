@@ -32,6 +32,8 @@ def create_app(
     broadcaster = TelemetryBroadcaster(
         service,
         interval=float(os.getenv("UAV_TELEMETRY_INTERVAL", "0.1")),
+        slow_interval=float(os.getenv("UAV_SLOW_TELEMETRY_INTERVAL", "1.0")),
+        reconnect_interval=float(os.getenv("UAV_TELEMETRY_RECONNECT_INTERVAL", "1.0")),
     )
 
     @asynccontextmanager
