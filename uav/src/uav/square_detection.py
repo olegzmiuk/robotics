@@ -26,6 +26,8 @@ BLUR_KERNEL_SIZE = (5, 5)
 MORPHOLOGY_KERNEL_SIZE = (5, 5)
 POLYGON_APPROXIMATION_EPSILON = 0.04
 MIN_SQUARE_SIDE_RATIO = 0.75
+MAX_CORNER_COSINE = 0.45
+FRAME_BORDER_MARGIN = 3
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,21 @@ class SquareDetection:
         }
 
 
+def _has_square_like_corners(approximation: Contour) -> bool:
+    """Return whether all four polygon corners are reasonably close to 90 degrees."""
+    points = approximation.reshape(4, 2).astype(np.float64)
+    for index, point in enumerate(points):
+        previous = points[index - 1] - point
+        following = points[(index + 1) % 4] - point
+        magnitude = np.linalg.norm(previous) * np.linalg.norm(following)
+        if magnitude == 0:
+            return False
+        cosine = abs(float(np.dot(previous, following) / magnitude))
+        if cosine > MAX_CORNER_COSINE:
+            return False
+    return True
+
+
 def detect_squares(
     frame: Image,
     threshold: int = DEFAULT_THRESHOLD,
@@ -98,7 +115,11 @@ def detect_squares(
             True,
         )
 
-        if len(approximation) != 4 or not cv2.isContourConvex(approximation):
+        if (
+            len(approximation) != 4
+            or not cv2.isContourConvex(approximation)
+            or not _has_square_like_corners(cast(Contour, approximation))
+        ):
             continue
 
         _, (rotated_width, rotated_height), _ = cv2.minAreaRect(approximation)
@@ -108,6 +129,14 @@ def detect_squares(
             continue
 
         x, y, width, height = cv2.boundingRect(approximation)
+        frame_height, frame_width = gray.shape
+        if (
+            x <= FRAME_BORDER_MARGIN
+            or y <= FRAME_BORDER_MARGIN
+            or x + width >= frame_width - FRAME_BORDER_MARGIN
+            or y + height >= frame_height - FRAME_BORDER_MARGIN
+        ):
+            continue
 
         detections.append(
             SquareDetection(

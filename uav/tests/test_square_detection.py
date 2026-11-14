@@ -68,6 +68,21 @@ def test_detects_rough_square_outline() -> None:
     assert detections[0].center.y == pytest.approx(150, abs=3)
 
 
+def test_ignores_square_like_fragment_clipped_by_frame_edge() -> None:
+    image = np.full((300, 400, 3), 255, dtype=np.uint8)
+    cv2.rectangle(image, (320, 100), (420, 180), (0, 0, 0), thickness=-1)
+
+    assert detect_squares(image) == []
+
+
+def test_ignores_slanted_quadrilateral_with_non_square_corners() -> None:
+    image = np.full((300, 400, 3), 255, dtype=np.uint8)
+    points = np.array([[80, 80], [180, 80], [270, 200], [170, 200]], dtype=np.int32)
+    cv2.fillConvexPoly(image, points, (0, 0, 0))
+
+    assert detect_squares(image) == []
+
+
 def test_rejects_invalid_threshold() -> None:
     image = np.full((100, 100, 3), 255, dtype=np.uint8)
 
