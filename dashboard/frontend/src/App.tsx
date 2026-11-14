@@ -11,6 +11,7 @@ function formatTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    fractionalSecondDigits: 1,
     hour12: false,
   }).format(new Date(value));
 }
@@ -127,14 +128,14 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<TelemetrySnapshot | null>(null);
   const [commands, setCommands] = useState<CommandLogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [streamState, setStreamState] = useState<StreamState>("connecting");
+  const [streamRateHz, setStreamRateHz] = useState(0);
   const requestInFlight = useRef(false);
+  const streamMessageCount = useRef(0);
 
   const refresh = useCallback(async () => {
     if (requestInFlight.current) return;
     requestInFlight.current = true;
-    setRefreshing(true);
     try {
       const nextSnapshot = await fetchTelemetry();
       setSnapshot(nextSnapshot);
@@ -149,7 +150,6 @@ export default function App() {
       // The primary telemetry error is more useful than a secondary log error.
     } finally {
       requestInFlight.current = false;
-      setRefreshing(false);
     }
   }, []);
 
@@ -167,6 +167,7 @@ export default function App() {
       socket.addEventListener("message", (message) => {
         const event = JSON.parse(String(message.data)) as TelemetryStreamEvent;
         if (event.type === "telemetry") {
+          streamMessageCount.current += 1;
           setSnapshot(event.snapshot);
           setError(null);
         } else {
@@ -187,6 +188,14 @@ export default function App() {
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       socket?.close();
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setStreamRateHz(streamMessageCount.current);
+      streamMessageCount.current = 0;
+    }, 1_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -217,10 +226,10 @@ export default function App() {
         <div className="topbar-actions">
           <div className={`connection ${connected ? "connection-online" : "connection-offline"}`}>
             <span className="status-dot" />
-            <div><strong>{connected ? "Flight controller online" : streamState === "connecting" ? "Connecting telemetry" : "Flight controller offline"}</strong><small>{snapshot?.serial_port ?? "/dev/ttyAMA0"} · {streamState === "live" ? "live stream" : streamState}</small></div>
+            <div><strong>{connected ? "Flight controller online" : streamState === "connecting" ? "Connecting telemetry" : "Flight controller offline"}</strong><small>{snapshot?.serial_port ?? "/dev/ttyAMA0"} · {streamState === "live" ? `${streamRateHz} Hz` : streamState}</small></div>
           </div>
-          <button type="button" onClick={() => void refresh()} disabled={refreshing}>
-            <span className={refreshing ? "spin" : ""}>↻</span> {refreshing ? "Polling" : "Refresh"}
+          <button type="button" onClick={() => void refresh()}>
+            <span>↻</span> Refresh
           </button>
         </div>
       </header>

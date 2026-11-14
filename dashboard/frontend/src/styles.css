@@ -37,8 +37,6 @@ h2 { font-size: 18px; font-weight: 600; }
 .connection-online .status-dot { background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
 .topbar button { border: 1px solid rgba(84, 229, 209, .28); color: var(--cyan); background: rgba(84, 229, 209, .07); border-radius: 10px; padding: 12px 16px; cursor: pointer; font-weight: 600; }
 .topbar button:disabled { opacity: .55; cursor: wait; }
-.spin { display: inline-block; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 
 .error-banner { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; padding: 12px 16px; border: 1px solid rgba(255, 109, 114, .28); border-radius: 10px; color: #ffc3c5; background: rgba(255, 109, 114, .07); font-size: 13px; }
 .error-banner span { color: #b99598; }
