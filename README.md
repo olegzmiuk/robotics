@@ -64,7 +64,8 @@ To force a clean Python package reinstall as well as the exact npm reinstall:
 `uv` creates `.venv` automatically. `pyproject.toml` declares the allowed
 dependency ranges; `uv.lock` stores the exact resolved versions and must be
 committed to Git. The dashboard frontend requires Node.js 24 and uses
-`package-lock.json` for reproducible npm installs.
+`package-lock.json` for reproducible npm installs on both macOS and Raspberry
+Pi ARM64, including platform-specific optional packages.
 
 ## Run the detector
 
@@ -190,18 +191,14 @@ and run one FastAPI process that serves both the UI and API:
 ```
 
 The wrapper builds the frontend, then binds the dashboard to `0.0.0.0:8000`.
-Use `./scripts/dashboard.sh --skip-build` for an existing build, or pass
-`--host` and `--port`. Existing `UAV_*` variables are forwarded unchanged.
-Runtime wrappers use the environment prepared by `install.sh` without silently
-resolving or reinstalling packages.
+It intentionally contains the same two commands shown in the manual workflow:
+`npm run build` followed by `uv run uvicorn`.
 
 The Raspberry Pi build uses Microsoft's JavaScript-based TypeScript 6
 compatibility package. TypeScript 7's native Go compiler produced `SIGILL` on
 the current Pi, so `package.json` aliases TypeScript to
 `@typescript/typescript6`. After pulling a changed `package-lock.json`, run
-`./scripts/install.sh`; `dashboard.sh` detects stale frontend dependencies and
-prints this instruction instead of using the old compiler. It also skips the
-frontend build automatically when `dist` is already newer than its inputs.
+`./scripts/install.sh` before starting the dashboard again.
 
 Then open `http://raspberrypi.local:8000` from the MacBook. Node.js is needed
 only to build the frontend; it is not a second production backend process.
@@ -329,9 +326,8 @@ and requires typing `PULSE M1` before it creates the physical-output opt-in:
 ./scripts/bench-motor.sh M1
 ```
 
-The conservative defaults are external output 1050 and 150 ms. Optional
-arguments include `--port`, `--output`, and `--duration`; the Python adapter
-still enforces the hard maximums independently of the shell wrapper.
+The conservative defaults are external output 1050 and 150 ms. The Python
+adapter still enforces the hard maximums independently of the shell wrapper.
 The wrapper launches `python -m uav.bench_motor_cli`, so a pulled source update
 does not depend on reinstalling the optional console-script entry point.
 
