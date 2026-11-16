@@ -3,8 +3,9 @@
 An educational Python project for UAV computer vision and Betaflight telemetry.
 It detects a black square, includes an MSP v1 client for querying the flight
 controller over UART, and is preparing a strictly gated, propeller-free motor
-response demonstration for a secured bench stand. The currently implemented
-MSP client and dashboard remain read-only.
+response demonstration for a secured bench stand. Normal telemetry and every
+dashboard route remain read-only; physical output is isolated behind a separate
+supervised one-shot CLI.
 
 ## Project structure
 
@@ -18,6 +19,8 @@ MSP client and dashboard remain read-only.
 │   │       ├── square_detection.py  # detection algorithm and result models
 │   │       ├── cli.py               # image file I/O and CLI arguments
 │   │       ├── msp.py               # MSP v1 framing, transport, and API model
+│   │       ├── bench_motor.py       # gated, bounded bench-only MSP adapter
+│   │       ├── bench_motor_cli.py   # supervised one-shot physical test CLI
 │   │       └── msp_cli.py           # read-only Betaflight CLI
 │   ├── tests/
 │   │   ├── test_capture.py
@@ -29,6 +32,7 @@ MSP client and dashboard remain read-only.
 ├── dashboard/
 │   ├── backend/                    # FastAPI API and telemetry orchestration
 │   └── frontend/                   # React, TypeScript, and Vite UI
+├── scripts/                        # install, check, dashboard, and bench wrappers
 └── pyproject.toml           # dependencies and tool configuration
 ```
 
@@ -48,8 +52,13 @@ Python 3.10 or newer and `uv` are required. Install `uv` once using one of the
 methods from its official installation guide, then synchronize the environment:
 
 ```bash
-uv sync --locked --extra dev
-npm ci --prefix dashboard/frontend
+./scripts/install.sh
+```
+
+To force a clean Python package reinstall as well as the exact npm reinstall:
+
+```bash
+./scripts/install.sh --reinstall
 ```
 
 `uv` creates `.venv` automatically. `pyproject.toml` declares the allowed
@@ -93,7 +102,7 @@ robot-capture-image --camera-index 0 --warmup-frames 30
 
 ## Read Betaflight telemetry
 
-The MSP client supports the read-only `MSP_API_VERSION`, `MSP_STATUS`,
+The normal MSP client usage supports the read-only `MSP_API_VERSION`, `MSP_STATUS`,
 `MSP_ATTITUDE`, and `MSP_ANALOG` commands. On the Raspberry Pi, with UART3
 already configured for MSP in Betaflight, read the API version with:
 
@@ -177,11 +186,14 @@ For a production-like deployment on Raspberry Pi, build the static frontend
 and run one FastAPI process that serves both the UI and API:
 
 ```bash
-uv sync --locked --extra dev
-npm ci --prefix dashboard/frontend
-npm run build --prefix dashboard/frontend
-uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
+./scripts/dashboard.sh
 ```
+
+The wrapper builds the frontend, then binds the dashboard to `0.0.0.0:8000`.
+Use `./scripts/dashboard.sh --skip-build` for an existing build, or pass
+`--host` and `--port`. Existing `UAV_*` variables are forwarded unchanged.
+Runtime wrappers use the environment prepared by `install.sh` without silently
+resolving or reinstalling packages.
 
 Then open `http://raspberrypi.local:8000` from the MacBook. Node.js is needed
 only to build the frontend; it is not a second production backend process.
@@ -212,7 +224,7 @@ stream rate, and refreshes `MSP_STATUS` plus `MSP_ANALOG` once per second. A
 transport or protocol failure closes the serial client and triggers a clean
 reconnect. UART/MSP failures produce a dedicated dashboard alert with the
 serial port, raw error, wiring and power checks, and automatic-retry status.
-All MSP API routes are read-only.
+All dashboard MSP API routes are read-only.
 
 The camera backend runs one `rpicam-vid` MJPEG process while one or more
 browsers consume `/api/camera/stream`. Capture stops after the last subscriber
@@ -269,11 +281,51 @@ UAV_MOTOR_BOTTOM_LEFT=M4 \
 uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
 ```
 
-These values control simulation only. There is still no MSP motor command,
-ARM command, RC injection, or physical output path. All four mapping values
+These values control simulation only. There is still no dashboard API or
+automatic physical output path. All four mapping values
 must be known, unique `M1`-`M4` labels; invalid or duplicated values stop the
 backend at startup. The dashboard preflight section shows the active validated
 mapping and confirms that physical output and MSP writes remain unavailable.
+
+An isolated `BenchMotorAdapter` now encodes Betaflight 4.4.3 `MSP_SET_MOTOR`
+for four motors. It is disabled by default, allows only one motor above STOP,
+caps the external value at 1100 and the pulse at 200 ms, sends `1000` to all
+motors before and after a pulse, and attempts the final STOP from a `finally`
+block. It is intentionally not connected to the dashboard, camera decisions,
+or production dashboard serial owner.
+
+Betaflight stores `MSP_SET_MOTOR` values in its disarmed motor outputs without
+an intrinsic command timeout. Consequently, a hard process or Raspberry Pi
+failure cannot be made fail-safe by this MSP command alone. Automatic physical
+output must remain unavailable until an independent dead-man mechanism or
+another verified controller-side timeout can guarantee motor shutdown if the
+application disappears. The supervised manual exception is described below.
+
+### Run one supervised bench motor pulse
+
+The manual CLI is the only physical-output entry point. It does not consume
+camera decisions and cannot run concurrently with the dashboard because both
+own the same UART. Stop the dashboard first. Remove every propeller, secure the
+frame, disarm the flight controller, keep the battery connector immediately
+accessible, and remain beside the test stand.
+
+For the first M1 pulse, use the interactive wrapper. It shows the full checklist
+and requires typing `PULSE M1` before it creates the physical-output opt-in:
+
+```bash
+./scripts/bench-motor.sh M1
+```
+
+The conservative defaults are external output 1050 and 150 ms. Optional
+arguments include `--port`, `--output`, and `--duration`; the Python adapter
+still enforces the hard maximums independently of the shell wrapper.
+
+The command performs one pulse only. Values above 1100, durations above 200 ms,
+multiple active motors, and missing confirmations are rejected. SIGINT,
+SIGTERM, normal exceptions, and ordinary completion all attempt a final STOP.
+An uncatchable process termination or Raspberry Pi power loss can still leave
+Betaflight's last disarmed motor value active; disconnect the battery
+immediately if the command does not print its successful STOP message.
 
 The default stream interval is 0.1 seconds. It can be changed when starting the
 backend, with a minimum of 0.05 seconds:
@@ -295,6 +347,13 @@ uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
 ## Run the checks
 
 ```bash
+./scripts/check.sh
+```
+
+This executes the complete hardware-independent validation workflow. The
+individual commands remain available when diagnosing one stage:
+
+```bash
 uv run --locked ruff check .
 uv run --locked ruff format --check .
 uv run --locked mypy
@@ -312,9 +371,12 @@ file with `uv lock` and commit both files.
 The dashboard, read-only telemetry, and live Camera Module 3 stream have passed
 Raspberry Pi hardware smoke tests. Live square detection, quadrant decisions,
 and the fail-closed dry-run pulse state machine are implemented and still need
-a Raspberry Pi smoke test as one complete path. After that test, the camera
-orientation and physical motor numbering must be verified before a separate
-disabled-by-default bench adapter may issue bounded single-motor test pulses
-with propellers removed. Automatic ARM, RC injection, configuration writes,
-and flight control remain outside the current scope.
+a Raspberry Pi smoke test as one complete path. The isolated bench adapter and
+an explicitly gated, supervised one-shot CLI are implemented and locally
+tested. The CLI is intended only to identify and verify M1-M4 without
+propellers. Before physical output can be wired to live camera decisions, the
+camera orientation and physical motor numbering must be verified and a
+fail-safe independent of the application process must guarantee STOP if the
+process or Raspberry Pi disappears. Automatic ARM, RC injection, configuration
+writes, and flight control remain outside the current scope.
 
