@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from test_service import FakeClient
+from test_vision_response import FakePhysicalOutput, mark_uart_healthy
 from uav_dashboard.api import create_app
 from uav_dashboard.models import CameraDetectionData, CameraStatusData, TelemetryStreamData
 from uav_dashboard.service import TelemetryService
@@ -104,10 +105,78 @@ def test_api_enables_and_disables_simulated_vision_response(tmp_path: Path) -> N
         "bottom_left": "M3",
     }
     assert preflight.json()["physical_output_available"] is False
-    assert preflight.json()["msp_writes_enabled"] is False
+    assert preflight.json()["watchdog_verified"] is False
+    assert preflight.json()["msp_writes_available"] is False
     assert streamed["state"] == "ready"
     assert journal.json()[0]["event"] == "enabled"
     assert disabled.json()["state"] == "disabled"
+
+
+def test_api_gates_physical_output_and_disables_it_on_websocket_close(tmp_path: Path) -> None:
+    service = TelemetryService(port="/dev/fake", client_factory=FakeClient)
+    output = FakePhysicalOutput()
+    response_controller = VisionResponseController(physical_output=output)
+    mark_uart_healthy(response_controller)
+    response_controller.set_enabled(True)
+
+    with TestClient(
+        create_app(
+            service,
+            vision_response_controller=response_controller,
+            frontend_dist=tmp_path / "missing",
+        )
+    ) as client:
+        with client.websocket_connect("/api/vision-response/ws") as websocket:
+            websocket.receive_json()
+            enabled = client.post("/api/vision-response/run-motors", json={"enabled": True})
+            assert enabled.status_code == 200
+            assert enabled.json()["run_motors"] is True
+
+        state = client.get("/api/vision-response")
+
+    assert state.json()["run_motors"] is False
+    assert output.stop_calls >= 1
+
+
+def test_api_rejects_physical_output_without_live_control_connection(tmp_path: Path) -> None:
+    service = TelemetryService(port="/dev/fake", client_factory=FakeClient)
+    output = FakePhysicalOutput()
+    response_controller = VisionResponseController(physical_output=output)
+    mark_uart_healthy(response_controller)
+    response_controller.set_enabled(True)
+
+    with TestClient(
+        create_app(
+            service,
+            vision_response_controller=response_controller,
+            frontend_dist=tmp_path / "missing",
+        )
+    ) as client:
+        response = client.post("/api/vision-response/run-motors", json={"enabled": True})
+
+    assert response.status_code == 409
+    assert "active dashboard" in response.json()["detail"]
+    assert response_controller.snapshot().run_motors is False
+
+
+def test_physical_output_requires_both_server_deployment_gates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = TelemetryService(port="/dev/fake", client_factory=FakeClient)
+    monkeypatch.setenv("UAV_BENCH_MOTOR_ENABLED", "PROPELLERS_REMOVED")
+
+    with TestClient(create_app(service, frontend_dist=tmp_path / "missing")) as client:
+        unavailable = client.get("/api/vision-response/preflight")
+
+    monkeypatch.setenv("UAV_MOTOR_WATCHDOG_VERIFIED", "YES")
+    with TestClient(create_app(service, frontend_dist=tmp_path / "missing")) as client:
+        available = client.get("/api/vision-response/preflight")
+
+    assert unavailable.json()["physical_output_available"] is False
+    assert available.json()["physical_output_available"] is True
+    assert available.json()["watchdog_verified"] is True
+    assert available.json()["msp_writes_available"] is True
 
 
 def test_api_returns_503_for_serial_failure(tmp_path: Path) -> None:

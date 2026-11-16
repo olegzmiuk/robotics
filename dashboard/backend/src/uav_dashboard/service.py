@@ -5,11 +5,12 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timezone
-from threading import Lock
+from threading import Event, Lock
 from time import perf_counter
 from types import TracebackType
 from typing import Protocol, TypeVar
 
+from uav.bench_motor import BenchMotor, BenchMotorAdapter
 from uav.msp import (
     MSP_ANALOG,
     MSP_API_VERSION,
@@ -20,6 +21,7 @@ from uav.msp import (
     Attitude,
     FlightControllerStatus,
     MspClient,
+    MspResponse,
     Sensor,
 )
 
@@ -54,6 +56,8 @@ class TelemetryClient(Protocol):
     def attitude(self) -> Attitude: ...
 
     def analog(self) -> AnalogTelemetry: ...
+
+    def request(self, command: int, payload: bytes = b"") -> MspResponse: ...
 
 
 class TelemetryService:
@@ -131,6 +135,30 @@ class TelemetryService:
             if not self._stream_active:
                 raise RuntimeError("telemetry stream is not active")
             return self._read_stream_snapshot_locked(refresh_slow=refresh_slow)
+
+    def run_bench_motor_pulse(
+        self,
+        motor: BenchMotor,
+        *,
+        output: int,
+        duration: float,
+        cancel_event: Event,
+    ) -> None:
+        """Run one bounded pulse on the dashboard-owned serial connection."""
+        with self._serial_lock:
+            if not self._stream_active:
+                raise RuntimeError("telemetry stream is not active")
+            client = self._ensure_stream_client_locked()
+
+            def wait_for_cancel(seconds: float) -> None:
+                cancel_event.wait(seconds)
+
+            adapter = BenchMotorAdapter(
+                client,
+                hardware_enabled=True,
+                sleep_fn=wait_for_cancel,
+            )
+            adapter.pulse(motor, output=output, duration=duration)
 
     def _read_stream_snapshot_locked(self, *, refresh_slow: bool) -> TelemetrySnapshot:
         try:

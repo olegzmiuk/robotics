@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
 from uav_dashboard.models import CameraDetectionData, TelemetryStreamData, TelemetryStreamError
 from uav_dashboard.vision_response import VisionResponseController
 
@@ -15,6 +16,23 @@ class FakeClock:
 
     def advance(self, seconds: float) -> None:
         self.value += seconds
+
+
+class FakePhysicalOutput:
+    def __init__(self) -> None:
+        self.fault: str | None = None
+        self.started: list[str] = []
+        self.stop_calls = 0
+        self.shutdown_calls = 0
+
+    def start(self, motor: str) -> None:
+        self.started.append(motor)
+
+    def stop(self) -> None:
+        self.stop_calls += 1
+
+    def shutdown(self) -> None:
+        self.shutdown_calls += 1
 
 
 def detection_event(
@@ -195,3 +213,50 @@ def test_enabling_without_uart_is_fail_closed() -> None:
     assert state.state == "fault"
     assert state.selected_motor is None
     assert state.reason == "Waiting for healthy UART telemetry"
+
+
+def test_physical_output_is_unavailable_and_off_by_default() -> None:
+    controller = VisionResponseController()
+    mark_uart_healthy(controller)
+    controller.set_enabled(True)
+
+    with pytest.raises(ValueError, match="watchdog"):
+        controller.set_run_motors(True)
+
+    assert controller.snapshot().run_motors is False
+    assert controller.preflight().physical_output_available is False
+
+
+def test_detected_target_starts_physical_motor_and_stale_requests_stop() -> None:
+    output = FakePhysicalOutput()
+    controller = VisionResponseController(physical_output=output)
+    mark_uart_healthy(controller)
+    controller.set_enabled(True)
+    enabled = controller.set_run_motors(True)
+
+    controller.observe_detection(detection_event())
+    controller.observe_detection(detection_event("stale", motor=None, quadrant=None))
+
+    assert enabled.run_motors is True
+    assert enabled.simulated_only is False
+    assert output.started == ["M4"]
+    assert output.stop_calls == 1
+    assert controller.snapshot().run_motors is True
+
+
+def test_physical_output_fault_fails_closed() -> None:
+    output = FakePhysicalOutput()
+    controller = VisionResponseController(physical_output=output)
+    mark_uart_healthy(controller)
+    controller.set_enabled(True)
+    controller.set_run_motors(True)
+    controller.observe_detection(detection_event())
+    output.fault = "final STOP failed"
+
+    state = controller.snapshot()
+
+    assert state.state == "fault"
+    assert state.run_motors is False
+    assert state.selected_motor is None
+    assert "final STOP failed" in state.reason
+    assert output.stop_calls >= 1

@@ -286,11 +286,11 @@ UAV_MOTOR_BOTTOM_LEFT=M3 \
 uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
 ```
 
-These values control simulation only. There is still no dashboard API or
-automatic physical output path. All four mapping values
+These values always control the response state machine. All four mapping values
 must be known, unique `M1`-`M4` labels; invalid or duplicated values stop the
-backend at startup. The dashboard preflight section shows the active validated
-mapping and confirms that physical output and MSP writes remain unavailable.
+backend at startup. Physical output remains unavailable unless both deployment
+gates described below are present, and the dashboard preflight section shows
+their state.
 
 The propeller-free manual test verified the physical Betaflight numbering:
 `M1` rear-right, `M2` front-right, `M3` rear-left, and `M4` front-left when the
@@ -301,21 +301,40 @@ An isolated `BenchMotorAdapter` now encodes Betaflight 4.4.3 `MSP_SET_MOTOR`
 for four motors. It is disabled by default, allows only one motor above STOP,
 caps the external value at 1100 and the pulse at 200 ms, sends `1000` to all
 motors before and after a pulse, and attempts the final STOP from a `finally`
-block. It is intentionally not connected to the dashboard, camera decisions,
-or production dashboard serial owner.
+block. The deployment-gated dashboard integration reuses this adapter through
+the production serial owner, so telemetry and physical writes cannot interleave.
 
 Betaflight stores `MSP_SET_MOTOR` values in its disarmed motor outputs without
 an intrinsic command timeout. Consequently, a hard process or Raspberry Pi
 failure cannot be made fail-safe by this MSP command alone. Automatic physical
-output must remain unavailable until an independent dead-man mechanism or
-another verified controller-side timeout can guarantee motor shutdown if the
+output remains unavailable until an independent dead-man mechanism or another
+verified controller-side timeout can guarantee motor shutdown if the
 application disappears. The supervised manual exception is described below.
+
+### Run vision-selected motors on a secured bench
+
+Only after the independent watchdog is physically installed and verified,
+start the propeller-free secured bench deployment with both exact gates:
+
+```bash
+UAV_BENCH_MOTOR_ENABLED=PROPELLERS_REMOVED \
+UAV_MOTOR_WATCHDOG_VERIFIED=YES \
+./scripts/dashboard.sh
+```
+
+The `Run Motors` checkbox still starts unchecked. Checking it permits one
+bounded `1050` / `150 ms` pulse to the motor mapped to each accepted square
+decision. Stale detection, camera or UART failure, response disable, loss of
+the controlling WebSocket, and normal server shutdown request STOP. The
+software cleanup does not replace the independent watchdog for hard process or
+Raspberry Pi failures.
 
 ### Run one supervised bench motor pulse
 
-The manual CLI is the only physical-output entry point. It does not consume
-camera decisions and cannot run concurrently with the dashboard because both
-own the same UART. Stop the dashboard first. Remove every propeller, secure the
+The manual CLI is the only physical-output entry point that does not require
+the dashboard watchdog deployment gate. It does not consume camera decisions
+and cannot run concurrently with the dashboard because both own the same UART.
+Stop the dashboard first. Remove every propeller, secure the
 frame, disarm the flight controller, keep the battery connector immediately
 accessible, and remain beside the test stand.
 
@@ -381,13 +400,12 @@ file with `uv lock` and commit both files.
 
 The dashboard, read-only telemetry, and live Camera Module 3 stream have passed
 Raspberry Pi hardware smoke tests. Live square detection, quadrant decisions,
-and the fail-closed dry-run pulse state machine are implemented and still need
-a Raspberry Pi smoke test as one complete path. The isolated bench adapter and
-an explicitly gated, supervised one-shot CLI are implemented and locally
-tested. The CLI is intended only to identify and verify M1-M4 without
-propellers. Before physical output can be wired to live camera decisions, the
-camera orientation and physical motor numbering must be verified and a
-fail-safe independent of the application process must guarantee STOP if the
-process or Raspberry Pi disappears. Automatic ARM, RC injection, configuration
+wired to the fail-closed response state machine are implemented and still need
+a Raspberry Pi smoke test as one complete path. The isolated bench adapter,
+explicitly gated one-shot CLI, and default-off dashboard `Run Motors` control
+are implemented and locally tested. Before the dashboard deployment gates may
+be set, the camera orientation and physical motor numbering must be verified
+and a fail-safe independent of the application process must guarantee STOP if
+the process or Raspberry Pi disappears. Automatic ARM, RC injection, configuration
 writes, and flight control remain outside the current scope.
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from threading import Event
 from types import TracebackType
 
 import pytest
@@ -8,6 +9,7 @@ from uav.msp import (
     ApiVersion,
     Attitude,
     FlightControllerStatus,
+    MspResponse,
     MspTimeoutError,
     Sensor,
 )
@@ -22,6 +24,7 @@ class FakeClient:
         self.status_calls = 0
         self.attitude_calls = 0
         self.analog_calls = 0
+        self.requests: list[tuple[int, bytes]] = []
 
     def __enter__(self) -> FakeClient:
         return self
@@ -68,6 +71,10 @@ class FakeClient:
             rssi=768,
             current=3.45,
         )
+
+    def request(self, command: int, payload: bytes = b"") -> MspResponse:
+        self.requests.append((command, payload))
+        return MspResponse(command=command, payload=b"")
 
 
 def test_reads_complete_snapshot_and_records_commands() -> None:
@@ -165,3 +172,30 @@ def test_stream_reconnects_after_command_failure() -> None:
     assert clients[1].status_calls == 1
     assert snapshot.connected is True
     assert clients[1].closed is True
+
+
+def test_bench_motor_pulse_uses_active_serial_connection_and_stops() -> None:
+    client = FakeClient()
+    service = TelemetryService(port="/dev/fake", client_factory=lambda: client)
+    cancel_event = Event()
+    cancel_event.set()
+
+    service.start_stream()
+    service.read_stream_snapshot()
+    service.run_bench_motor_pulse(
+        "M2",
+        output=1050,
+        duration=0.15,
+        cancel_event=cancel_event,
+    )
+    service.stop_stream()
+
+    outputs = [
+        tuple(int.from_bytes(payload[index : index + 2], "little") for index in range(0, 8, 2))
+        for _, payload in client.requests
+    ]
+    assert outputs == [
+        (1000, 1000, 1000, 1000),
+        (1000, 1050, 1000, 1000),
+        (1000, 1000, 1000, 1000),
+    ]

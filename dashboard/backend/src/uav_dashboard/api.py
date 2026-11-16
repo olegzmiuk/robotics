@@ -24,7 +24,9 @@ from uav_dashboard.models import (
     VisionResponseLogEntry,
     VisionResponsePreflightData,
     VisionResponseStateData,
+    VisionRunMotorsRequest,
 )
+from uav_dashboard.motor_output import BenchMotorOutput
 from uav_dashboard.service import TelemetryService
 from uav_dashboard.stream import TelemetryBroadcaster
 from uav_dashboard.vision_response import VisionResponseController
@@ -49,11 +51,26 @@ def create_app(
         bottom_right=os.getenv("UAV_MOTOR_BOTTOM_RIGHT", "M1"),
         bottom_left=os.getenv("UAV_MOTOR_BOTTOM_LEFT", "M3"),
     )
+    pulse_duration = float(os.getenv("UAV_SIMULATED_PULSE_DURATION", "0.15"))
+    physical_output_enabled = (
+        os.getenv("UAV_BENCH_MOTOR_ENABLED") == "PROPELLERS_REMOVED"
+        and os.getenv("UAV_MOTOR_WATCHDOG_VERIFIED") == "YES"
+    )
+    physical_output = (
+        BenchMotorOutput(
+            service,
+            output=int(os.getenv("UAV_BENCH_MOTOR_OUTPUT", "1050")),
+            duration=pulse_duration,
+        )
+        if physical_output_enabled
+        else None
+    )
     response_controller = vision_response_controller or VisionResponseController(
-        pulse_duration=float(os.getenv("UAV_SIMULATED_PULSE_DURATION", "0.2")),
+        pulse_duration=pulse_duration,
         cooldown_duration=float(os.getenv("UAV_SIMULATED_PULSE_COOLDOWN", "1.0")),
         quadrant_dwell=float(os.getenv("UAV_SIMULATED_QUADRANT_DWELL", "0.25")),
         motor_mapping=motor_mapping,
+        physical_output=physical_output,
     )
     broadcaster = TelemetryBroadcaster(
         service,
@@ -74,6 +91,7 @@ def create_app(
         detection_observer=response_controller.observe_detection,
         motor_mapping=motor_mapping,
     )
+    vision_response_clients = 0
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -82,6 +100,7 @@ def create_app(
         try:
             yield
         finally:
+            await asyncio.to_thread(response_controller.shutdown)
             await camera.stop()
             await broadcaster.stop()
 
@@ -136,15 +155,34 @@ def create_app(
     ) -> VisionResponseStateData:
         return response_controller.set_enabled(request.enabled)
 
+    @app.post("/api/vision-response/run-motors", response_model=VisionResponseStateData)
+    async def set_vision_run_motors(
+        request: VisionRunMotorsRequest,
+    ) -> VisionResponseStateData:
+        if request.enabled and vision_response_clients < 1:
+            raise HTTPException(
+                status_code=409,
+                detail="physical output requires an active dashboard control connection",
+            )
+        try:
+            return response_controller.set_run_motors(request.enabled)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     @app.websocket("/api/vision-response/ws")
     async def vision_response_stream(websocket: WebSocket) -> None:
+        nonlocal vision_response_clients
         await websocket.accept()
+        vision_response_clients += 1
         try:
             while True:
                 await websocket.send_text(response_controller.snapshot().model_dump_json())
                 await asyncio.sleep(0.05)
         except WebSocketDisconnect:
             pass
+        finally:
+            vision_response_clients -= 1
+            response_controller.set_run_motors(False)
 
     @app.get("/api/camera/status", response_model=CameraStatusData)
     async def camera_status() -> CameraStatusData:

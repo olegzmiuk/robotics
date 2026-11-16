@@ -88,7 +88,9 @@ export type VisionResponseState = "disabled" | "ready" | "simulated_pulse" | "co
 export interface VisionResponseStateData {
   state: VisionResponseState;
   enabled: boolean;
-  simulated_only: true;
+  run_motors: boolean;
+  physical_output_available: boolean;
+  simulated_only: boolean;
   updated_at: string;
   selected_motor: SimulatedMotor | null;
   quadrant: DetectionQuadrant | null;
@@ -114,8 +116,9 @@ export interface VisionResponsePreflightData {
   mapping_complete: true;
   mapping_unique: true;
   ready_for_simulation: true;
-  physical_output_available: false;
-  msp_writes_enabled: false;
+  physical_output_available: boolean;
+  watchdog_verified: boolean;
+  msp_writes_available: boolean;
 }
 
 export interface TelemetryErrorData {

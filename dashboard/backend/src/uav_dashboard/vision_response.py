@@ -1,4 +1,4 @@
-"""Simulation-only state machine for a future bounded bench response."""
+"""Fail-closed state machine for simulated and gated physical bench response."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timezone
 from time import monotonic
-from typing import Literal
+from typing import Literal, Protocol
 
 from uav_dashboard.camera import Quadrant, SimulatedMotor, create_motor_mapping
 from uav_dashboard.models import (
@@ -21,8 +21,21 @@ from uav_dashboard.models import (
 ResponseState = Literal["disabled", "ready", "simulated_pulse", "cooldown", "fault"]
 
 
+class PhysicalMotorOutput(Protocol):
+    """Cancellable physical-output surface used only by verified bench mode."""
+
+    @property
+    def fault(self) -> str | None: ...
+
+    def start(self, motor: SimulatedMotor) -> None: ...
+
+    def stop(self) -> None: ...
+
+    def shutdown(self) -> None: ...
+
+
 class VisionResponseController:
-    """Model a conservative motor response without producing physical output."""
+    """Coordinate conservative target decisions and optional physical output."""
 
     def __init__(
         self,
@@ -34,6 +47,7 @@ class VisionResponseController:
         clock: Callable[[], float] = monotonic,
         now_factory: Callable[[], datetime] | None = None,
         motor_mapping: dict[Quadrant, SimulatedMotor] | None = None,
+        physical_output: PhysicalMotorOutput | None = None,
     ) -> None:
         if pulse_duration <= 0:
             raise ValueError("simulated pulse duration must be positive")
@@ -50,8 +64,10 @@ class VisionResponseController:
         self._clock = clock
         self._now_factory = now_factory or (lambda: datetime.now(timezone.utc))
         self._motor_mapping = dict(motor_mapping or create_motor_mapping())
+        self._physical_output = physical_output
         self._journal: deque[VisionResponseLogEntry] = deque(maxlen=journal_size)
         self._enabled = False
+        self._run_motors = False
         self._state: ResponseState = "disabled"
         self._selected_motor: Literal["M1", "M2", "M3", "M4"] | None = None
         self._quadrant: Literal["top_left", "top_right", "bottom_left", "bottom_right"] | None = (
@@ -72,13 +88,15 @@ class VisionResponseController:
         self._updated_at = self._now_factory()
 
     def set_enabled(self, enabled: bool) -> VisionResponseStateData:
-        """Explicitly enable or disable the simulation state machine."""
+        """Explicitly enable or disable the response state machine."""
         now = self._clock()
         self._advance(now)
         if enabled == self._enabled:
             return self._snapshot(now)
 
         self._enabled = enabled
+        if not enabled:
+            self._disable_physical_output()
         self._selected_motor = None
         self._quadrant = None
         self._deadline = None
@@ -99,8 +117,40 @@ class VisionResponseController:
             self._transition("disabled", "Simulation disabled; output is zero", "disabled")
         return self._snapshot(now)
 
+    def set_run_motors(self, enabled: bool) -> VisionResponseStateData:
+        """Explicitly opt in to physical output for this connected dashboard session."""
+        now = self._clock()
+        self._advance(now)
+        if enabled == self._run_motors:
+            return self._snapshot(now)
+        if enabled:
+            if self._physical_output is None:
+                raise ValueError("physical output requires verified bench mode and watchdog")
+            if not self._enabled or self._state != "ready" or not self._telemetry_available:
+                raise ValueError("enable the healthy vision dry run before physical output")
+            self._run_motors = True
+            self._transition(
+                self._state,
+                "Physical motor output enabled; waiting for a fresh target",
+                "motors_enabled",
+            )
+        else:
+            self._disable_physical_output()
+            self._transition(
+                self._state,
+                "Physical motor output disabled",
+                "motors_disabled",
+            )
+        return self._snapshot(now)
+
+    def shutdown(self) -> None:
+        """Disable physical output and wait for its final STOP during app shutdown."""
+        self._run_motors = False
+        if self._physical_output is not None:
+            self._physical_output.shutdown()
+
     def observe_detection(self, event: CameraDetectionData) -> None:
-        """Consume one camera decision and update the simulated response."""
+        """Consume one camera decision and update the response."""
         now = self._clock()
         self._advance(now)
 
@@ -112,6 +162,7 @@ class VisionResponseController:
         if event.status in ("none", "stale"):
             self._clear_target_tracking()
             if self._enabled and self._state == "simulated_pulse":
+                self._stop_physical_output()
                 self._selected_motor = None
                 self._quadrant = None
                 self._deadline = None
@@ -159,6 +210,12 @@ class VisionResponseController:
             f"Fresh target selected {event.simulated_motor} in {event.quadrant}",
             "pulse_started",
         )
+        if self._run_motors and self._physical_output is not None:
+            try:
+                self._physical_output.start(event.simulated_motor)
+            except Exception as error:
+                self._run_motors = False
+                self._enter_fault("uart", f"Physical motor output failed: {error}")
 
     def _observe_quadrant(
         self,
@@ -203,11 +260,26 @@ class VisionResponseController:
         return list(reversed(self._journal))
 
     def preflight(self) -> VisionResponsePreflightData:
-        """Describe validated simulation wiring without enabling physical output."""
+        """Describe validated mapping and physical-output deployment gates."""
         mapping = {str(quadrant): motor for quadrant, motor in self._motor_mapping.items()}
-        return VisionResponsePreflightData(motor_mapping=mapping)
+        available = self._physical_output is not None
+        return VisionResponsePreflightData(
+            motor_mapping=mapping,
+            physical_output_available=available,
+            watchdog_verified=available,
+            msp_writes_available=available,
+        )
 
     def _advance(self, now: float) -> None:
+        if (
+            self._run_motors
+            and self._physical_output is not None
+            and self._physical_output.fault is not None
+        ):
+            fault = self._physical_output.fault
+            self._run_motors = False
+            self._enter_fault("uart", f"Physical motor output failed: {fault}")
+            return
         if self._deadline is None or now < self._deadline:
             return
         if self._state == "simulated_pulse":
@@ -234,6 +306,7 @@ class VisionResponseController:
         self._clear_target_tracking()
         self._target_latched = True
         self._fault_source = source
+        self._disable_physical_output()
         self._selected_motor = None
         self._quadrant = None
         self._deadline = None
@@ -263,6 +336,14 @@ class VisionResponseController:
         self._pending_quadrant = None
         self._pending_since = None
 
+    def _stop_physical_output(self) -> None:
+        if self._physical_output is not None:
+            self._physical_output.stop()
+
+    def _disable_physical_output(self) -> None:
+        self._run_motors = False
+        self._stop_physical_output()
+
     def _snapshot(self, now: float) -> VisionResponseStateData:
         pulse_remaining = 0.0
         cooldown_remaining = 0.0
@@ -281,6 +362,9 @@ class VisionResponseController:
         return VisionResponseStateData(
             state=self._state,
             enabled=self._enabled,
+            run_motors=self._run_motors,
+            physical_output_available=self._physical_output is not None,
+            simulated_only=not self._run_motors,
             updated_at=self._updated_at,
             selected_motor=self._selected_motor,
             quadrant=self._quadrant,

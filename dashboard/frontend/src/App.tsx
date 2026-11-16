@@ -7,6 +7,7 @@ import {
   fetchVisionResponseJournal,
   fetchVisionResponsePreflight,
   setVisionResponseEnabled,
+  setVisionRunMotors,
   telemetryWebSocketUrl,
   visionResponseWebSocketUrl,
 } from "./api";
@@ -373,9 +374,23 @@ function VisionResponsePanel() {
     }
   };
 
+  const toggleRunMotors = async () => {
+    if (!response || busy) return;
+    setBusy(true);
+    try {
+      setResponse(await setVisionRunMotors(!response.run_motors));
+      setJournal(await fetchVisionResponseJournal());
+      setRequestError(null);
+    } catch (responseError) {
+      setRequestError(responseError instanceof Error ? responseError.message : "Request failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const state = response?.state ?? "disabled";
   const output = response?.state === "simulated_pulse" && response.selected_motor
-    ? `SIM ${response.selected_motor}`
+    ? `${response.run_motors ? "LIVE" : "SIM"} ${response.selected_motor}`
     : "ZERO";
   const pendingTransition = response?.pending_quadrant
     ? `${response.pending_quadrant.replace("_", " ")} · ${Math.round(response.quadrant_dwell_remaining_ms)} ms`
@@ -385,10 +400,24 @@ function VisionResponsePanel() {
     <section className={`panel response-panel response-${state}`}>
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">Simulation-only safety path</span>
-          <h2>Vision response dry run</h2>
+          <span className="eyebrow">Propeller-free safety path</span>
+          <h2>Vision response</h2>
         </div>
         <div className="response-heading-actions">
+          <label
+            className={`run-motors-toggle ${response?.run_motors ? "run-motors-active" : ""}`}
+            title={preflight?.physical_output_available
+              ? "Allow bounded physical motor pulses for detected targets"
+              : "Requires server bench opt-in and a verified hardware watchdog"}
+          >
+            <input
+              checked={response?.run_motors ?? false}
+              disabled={!response?.enabled || !preflight?.physical_output_available || busy}
+              onChange={() => void toggleRunMotors()}
+              type="checkbox"
+            />
+            <span>Run Motors</span>
+          </label>
           <span className={`badge ${state === "fault" ? "badge-error" : response?.enabled ? "badge-warn" : "badge-muted"}`}>
             {state.replace("_", " ")}
           </span>
@@ -404,9 +433,11 @@ function VisionResponsePanel() {
       </div>
       <div className="response-content">
         <div className="response-output">
-          <span>Simulated output</span>
+          <span>{response?.run_motors ? "Physical bench output" : "Simulated output"}</span>
           <strong>{output}</strong>
-          <small>No MSP writes · No physical motor output</small>
+          <small>{response?.run_motors
+            ? "Bounded MSP write · Watchdog required · Propellers removed"
+            : "No MSP writes · No physical motor output"}</small>
         </div>
         <div className="response-state-grid">
           <Metric label="Quadrant" value={response?.quadrant?.replace("_", " ") ?? "—"} />
@@ -432,15 +463,19 @@ function VisionResponsePanel() {
           </div>
           <div className="response-preflight-flags">
             <span className="badge badge-safe">Mapping unique</span>
-            <span className="badge badge-muted">Physical output off</span>
-            <span className="badge badge-muted">MSP writes off</span>
+            <span className={`badge ${preflight?.watchdog_verified ? "badge-safe" : "badge-muted"}`}>
+              {preflight?.watchdog_verified ? "Watchdog verified" : "Watchdog required"}
+            </span>
+            <span className={`badge ${response?.run_motors ? "badge-warn" : "badge-muted"}`}>
+              {response?.run_motors ? "MSP writes armed" : "MSP writes off"}
+            </span>
           </div>
         </div>
         <div className="response-journal">
           <span className="metric-label">Decision journal</span>
           <div>
             {journal.length === 0 ? (
-              <small>No simulated decisions yet</small>
+              <small>No decisions yet</small>
             ) : journal.slice(0, 5).map((entry, index) => (
               <p key={`${entry.timestamp}-${entry.event}-${index}`}>
                 <time>{formatTime(entry.timestamp)}</time>

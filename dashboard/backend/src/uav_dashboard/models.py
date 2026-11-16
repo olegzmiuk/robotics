@@ -116,11 +116,13 @@ class CameraDetectionData(FrozenModel):
 
 
 class VisionResponseStateData(FrozenModel):
-    """Current state of the simulation-only vision response controller."""
+    """Current state of the vision response controller."""
 
     state: Literal["disabled", "ready", "simulated_pulse", "cooldown", "fault"]
     enabled: bool
-    simulated_only: Literal[True] = True
+    run_motors: bool = False
+    physical_output_available: bool = False
+    simulated_only: bool = True
     updated_at: datetime
     selected_motor: Literal["M1", "M2", "M3", "M4"] | None = None
     quadrant: Literal["top_left", "top_right", "bottom_left", "bottom_right"] | None = None
@@ -146,11 +148,16 @@ class VisionResponsePreflightData(FrozenModel):
     mapping_complete: Literal[True] = True
     mapping_unique: Literal[True] = True
     ready_for_simulation: Literal[True] = True
-    physical_output_available: Literal[False] = False
-    msp_writes_enabled: Literal[False] = False
+    physical_output_available: bool = False
+    watchdog_verified: bool = False
+    msp_writes_available: bool = False
 
 
 class VisionResponseEnabledRequest(FrozenModel):
+    enabled: bool
+
+
+class VisionRunMotorsRequest(FrozenModel):
     enabled: bool
 
 

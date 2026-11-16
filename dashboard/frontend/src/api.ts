@@ -57,6 +57,10 @@ export function setVisionResponseEnabled(enabled: boolean): Promise<VisionRespon
   return postJson<VisionResponseStateData>("/api/vision-response/enabled", { enabled });
 }
 
+export function setVisionRunMotors(enabled: boolean): Promise<VisionResponseStateData> {
+  return postJson<VisionResponseStateData>("/api/vision-response/run-motors", { enabled });
+}
+
 export function telemetryWebSocketUrl(): string {
   const url = new URL("/api/telemetry/ws", window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
