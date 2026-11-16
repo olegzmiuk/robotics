@@ -90,7 +90,12 @@ class CameraStreamError:
     message: str
 
 
-CameraStreamItem = bytes | CameraStreamError
+@dataclass(frozen=True)
+class CameraStreamClosed:
+    """Signal connected consumers that camera capture ended normally."""
+
+
+CameraStreamItem = bytes | CameraStreamError | CameraStreamClosed
 
 
 @dataclass(frozen=True)
@@ -448,6 +453,8 @@ class CameraService:
                 item = await queue.get()
                 if isinstance(item, CameraStreamError):
                     raise RuntimeError(item.message)
+                if isinstance(item, CameraStreamClosed):
+                    return
                 yield self._multipart_frame(item)
         finally:
             await self._unsubscribe(queue)
@@ -527,6 +534,9 @@ class CameraService:
                 if not chunk:
                     return_code = await process.wait()
                     stderr = await stderr_task if stderr_task is not None else b""
+                    if return_code == 0:
+                        self._publish(CameraStreamClosed())
+                        return
                     detail = stderr.decode(errors="replace").strip()
                     message = f"rpicam-vid exited with status {return_code}"
                     if detail:

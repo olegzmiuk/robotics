@@ -321,3 +321,31 @@ def test_camera_error_is_reported_to_stream_and_status() -> None:
         assert service.status().error == "rpicam-vid was not found"
 
     asyncio.run(scenario())
+
+
+def test_camera_stream_closes_cleanly_when_rpicam_exits_successfully() -> None:
+    async def scenario() -> None:
+        process = FakeProcess()
+
+        async def create_process(command: tuple[str, ...]) -> FakeProcess:
+            del command
+            return process
+
+        service = CameraService(
+            process_factory=create_process,
+            frame_processor=lambda frame: frame,
+        )
+        stream = service.stream()
+        next_frame = asyncio.create_task(anext(stream))
+        await asyncio.sleep(0)
+
+        process._finish(0)
+
+        with pytest.raises(StopAsyncIteration):
+            await asyncio.wait_for(next_frame, timeout=1.0)
+
+        assert service.status().state == "idle"
+        assert service.status().error is None
+        assert service.status().subscribers == 0
+
+    asyncio.run(scenario())
