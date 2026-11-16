@@ -20,7 +20,7 @@ class FakeClock:
 def detection_event(
     status: str = "detected",
     *,
-    motor: str | None = "M1",
+    motor: str | None = "M4",
     quadrant: str | None = "top_left",
 ) -> CameraDetectionData:
     return CameraDetectionData.model_validate(
@@ -74,7 +74,7 @@ def test_fresh_target_runs_one_pulse_then_requires_target_clear() -> None:
     second_pulse = controller.snapshot()
 
     assert pulsing.state == "simulated_pulse"
-    assert pulsing.selected_motor == "M1"
+    assert pulsing.selected_motor == "M4"
     assert cooldown.state == "cooldown"
     assert cooldown.selected_motor is None
     assert ready_latched.state == "ready"
@@ -107,7 +107,7 @@ def test_stable_quadrant_transition_selects_new_motor_after_cooldown() -> None:
     second_pulse = controller.snapshot()
 
     assert during_first_pulse.state == "simulated_pulse"
-    assert during_first_pulse.selected_motor == "M1"
+    assert during_first_pulse.selected_motor == "M4"
     assert during_first_pulse.pending_quadrant == "top_right"
     assert cooldown.state == "cooldown"
     assert cooldown.selected_motor is None

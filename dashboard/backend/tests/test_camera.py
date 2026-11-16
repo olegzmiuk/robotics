@@ -177,9 +177,9 @@ def test_detection_tracker_holds_then_clears_stale_decision() -> None:
 
     assert detected.status == "detected"
     assert detected.quadrant == "top_left"
-    assert detected.simulated_motor == "M1"
+    assert detected.simulated_motor == "M4"
     assert holding.status == "holding"
-    assert holding.simulated_motor == "M1"
+    assert holding.simulated_motor == "M4"
     assert holding.age_ms == 200
     assert stale.status == "stale"
     assert stale.simulated_motor is None
@@ -272,7 +272,7 @@ def test_detection_subscriber_uses_shared_camera_process() -> None:
 
         assert event.status == "detected"
         assert event.quadrant == "top_left"
-        assert event.simulated_motor == "M1"
+        assert event.simulated_motor == "M4"
         assert process_calls == 1
 
         await service.unsubscribe_detections(queue)

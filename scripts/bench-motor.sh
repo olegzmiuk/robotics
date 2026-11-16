@@ -117,7 +117,7 @@ UV_BIN="$(find_uv)"
 cd "${ROOT_DIR}"
 
 export UAV_BENCH_MOTOR_ENABLED="PROPELLERS_REMOVED"
-exec "${UV_BIN}" run --locked --no-sync uav-bench-motor \
+exec "${UV_BIN}" run --locked --no-sync python -m uav.bench_motor_cli \
   --port "${SERIAL_PORT}" \
   --motor "${MOTOR}" \
   --output "${OUTPUT}" \

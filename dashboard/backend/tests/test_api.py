@@ -44,7 +44,7 @@ class FakeCamera:
                 bounding_box={"x": 80, "y": 40, "width": 80, "height": 80},
                 area=6400,
                 quadrant="top_left",
-                simulated_motor="M1",
+                simulated_motor="M4",
             )
         )
         return queue
@@ -98,10 +98,10 @@ def test_api_enables_and_disables_simulated_vision_response(tmp_path: Path) -> N
     assert enabled.json()["state"] == "ready"
     assert enabled.json()["simulated_only"] is True
     assert preflight.json()["motor_mapping"] == {
-        "top_left": "M1",
+        "top_left": "M4",
         "top_right": "M2",
-        "bottom_right": "M3",
-        "bottom_left": "M4",
+        "bottom_right": "M1",
+        "bottom_left": "M3",
     }
     assert preflight.json()["physical_output_available"] is False
     assert preflight.json()["msp_writes_enabled"] is False
@@ -174,7 +174,7 @@ def test_websocket_streams_camera_detection_decisions(tmp_path: Path) -> None:
     assert event["type"] == "detection"
     assert event["status"] == "detected"
     assert event["quadrant"] == "top_left"
-    assert event["simulated_motor"] == "M1"
+    assert event["simulated_motor"] == "M4"
     assert camera.detection_unsubscribed is True
 
 

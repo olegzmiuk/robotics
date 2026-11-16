@@ -44,10 +44,10 @@ def create_app(
         timeout=float(os.getenv("UAV_SERIAL_TIMEOUT", "2.0")),
     )
     motor_mapping = create_motor_mapping(
-        top_left=os.getenv("UAV_MOTOR_TOP_LEFT", "M1"),
+        top_left=os.getenv("UAV_MOTOR_TOP_LEFT", "M4"),
         top_right=os.getenv("UAV_MOTOR_TOP_RIGHT", "M2"),
-        bottom_right=os.getenv("UAV_MOTOR_BOTTOM_RIGHT", "M3"),
-        bottom_left=os.getenv("UAV_MOTOR_BOTTOM_LEFT", "M4"),
+        bottom_right=os.getenv("UAV_MOTOR_BOTTOM_RIGHT", "M1"),
+        bottom_left=os.getenv("UAV_MOTOR_BOTTOM_LEFT", "M3"),
     )
     response_controller = vision_response_controller or VisionResponseController(
         pulse_duration=float(os.getenv("UAV_SIMULATED_PULSE_DURATION", "0.2")),

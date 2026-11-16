@@ -195,6 +195,14 @@ Use `./scripts/dashboard.sh --skip-build` for an existing build, or pass
 Runtime wrappers use the environment prepared by `install.sh` without silently
 resolving or reinstalling packages.
 
+The Raspberry Pi build uses Microsoft's JavaScript-based TypeScript 6
+compatibility package. TypeScript 7's native Go compiler produced `SIGILL` on
+the current Pi, so `package.json` aliases TypeScript to
+`@typescript/typescript6`. After pulling a changed `package-lock.json`, run
+`./scripts/install.sh`; `dashboard.sh` detects stale frontend dependencies and
+prints this instruction instead of using the old compiler. It also skips the
+frontend build automatically when `dist` is already newer than its inputs.
+
 Then open `http://raspberrypi.local:8000` from the MacBook. Node.js is needed
 only to build the frontend; it is not a second production backend process.
 
@@ -274,10 +282,10 @@ The dry-run timings can be adjusted without rebuilding:
 UAV_SIMULATED_PULSE_DURATION=0.2 \
 UAV_SIMULATED_PULSE_COOLDOWN=1.0 \
 UAV_SIMULATED_QUADRANT_DWELL=0.25 \
-UAV_MOTOR_TOP_LEFT=M1 \
+UAV_MOTOR_TOP_LEFT=M4 \
 UAV_MOTOR_TOP_RIGHT=M2 \
-UAV_MOTOR_BOTTOM_RIGHT=M3 \
-UAV_MOTOR_BOTTOM_LEFT=M4 \
+UAV_MOTOR_BOTTOM_RIGHT=M1 \
+UAV_MOTOR_BOTTOM_LEFT=M3 \
 uv run --locked uvicorn uav_dashboard.api:app --host 0.0.0.0 --port 8000
 ```
 
@@ -286,6 +294,11 @@ automatic physical output path. All four mapping values
 must be known, unique `M1`-`M4` labels; invalid or duplicated values stop the
 backend at startup. The dashboard preflight section shows the active validated
 mapping and confirms that physical output and MSP writes remain unavailable.
+
+The propeller-free manual test verified the physical Betaflight numbering:
+`M1` rear-right, `M2` front-right, `M3` rear-left, and `M4` front-left when the
+airframe is viewed from above. With image top treated as aircraft front, the
+default geometric mapping is therefore `TL→M4`, `TR→M2`, `BL→M3`, `BR→M1`.
 
 An isolated `BenchMotorAdapter` now encodes Betaflight 4.4.3 `MSP_SET_MOTOR`
 for four motors. It is disabled by default, allows only one motor above STOP,
@@ -319,6 +332,8 @@ and requires typing `PULSE M1` before it creates the physical-output opt-in:
 The conservative defaults are external output 1050 and 150 ms. Optional
 arguments include `--port`, `--output`, and `--duration`; the Python adapter
 still enforces the hard maximums independently of the shell wrapper.
+The wrapper launches `python -m uav.bench_motor_cli`, so a pulled source update
+does not depend on reinstalling the optional console-script entry point.
 
 The command performs one pulse only. Values above 1100, durations above 200 ms,
 multiple active motors, and missing confirmations are rejected. SIGINT,

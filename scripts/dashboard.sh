@@ -34,6 +34,30 @@ find_uv() {
   fi
 }
 
+frontend_needs_build() {
+  local built_index="dashboard/frontend/dist/index.html"
+  local source_file
+  if [[ ! -f "${built_index}" ]]; then
+    return 0
+  fi
+  while IFS= read -r source_file; do
+    if [[ "${source_file}" -nt "${built_index}" ]]; then
+      return 0
+    fi
+  done < <(
+    find \
+      dashboard/frontend/src \
+      dashboard/frontend/package.json \
+      dashboard/frontend/package-lock.json \
+      dashboard/frontend/tsconfig.json \
+      dashboard/frontend/tsconfig.app.json \
+      dashboard/frontend/tsconfig.node.json \
+      dashboard/frontend/vite.config.ts \
+      -type f
+  )
+  return 1
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host)
@@ -74,7 +98,16 @@ if [[ "${BUILD_FRONTEND}" == true ]]; then
     printf '%s\n' "npm is missing; run ./scripts/install.sh first." >&2
     exit 1
   fi
-  npm run build --prefix dashboard/frontend
+  if [[ ! -f dashboard/frontend/node_modules/.package-lock.json ]] || \
+    [[ dashboard/frontend/package-lock.json -nt dashboard/frontend/node_modules/.package-lock.json ]]; then
+    printf '%s\n' "frontend dependencies are stale; run ./scripts/install.sh first." >&2
+    exit 1
+  fi
+  if frontend_needs_build; then
+    npm run build --prefix dashboard/frontend
+  else
+    printf '%s\n' "Frontend build is up to date."
+  fi
 elif [[ ! -f dashboard/frontend/dist/index.html ]]; then
   printf '%s\n' "frontend build is missing; remove --skip-build" >&2
   exit 1

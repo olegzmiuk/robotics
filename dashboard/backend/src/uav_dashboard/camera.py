@@ -55,19 +55,19 @@ Quadrant = Literal["top_left", "top_right", "bottom_left", "bottom_right"]
 SimulatedMotor = Literal["M1", "M2", "M3", "M4"]
 
 SIMULATED_MOTOR_BY_QUADRANT: dict[Quadrant, SimulatedMotor] = {
-    "top_left": "M1",
+    "top_left": "M4",
     "top_right": "M2",
-    "bottom_right": "M3",
-    "bottom_left": "M4",
+    "bottom_right": "M1",
+    "bottom_left": "M3",
 }
 
 
 def create_motor_mapping(
     *,
-    top_left: str = "M1",
+    top_left: str = "M4",
     top_right: str = "M2",
-    bottom_right: str = "M3",
-    bottom_left: str = "M4",
+    bottom_right: str = "M1",
+    bottom_left: str = "M3",
 ) -> dict[Quadrant, SimulatedMotor]:
     """Validate and return a complete one-to-one quadrant mapping."""
     raw_mapping = {
