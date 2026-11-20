@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680" viewBox="0 0 1000 680" role="img" aria-labelledby="title description">
+  <title id="title">UAV prototype architecture</title>
+  <desc id="description">Camera and Raspberry Pi software components on the left, web dashboard and UAV bench components on the right.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto-start-reverse" markerUnits="strokeWidth">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .canvas { fill: #ffffff; stroke: #e2e8f0; stroke-width: 2; }
+      .section { fill: #f8fafc; stroke: #94a3b8; stroke-width: 2; }
+      .group { fill: #eff6ff; stroke: #93c5fd; stroke-width: 2; }
+      .node { fill: #ffffff; stroke: #2563eb; stroke-width: 2; filter: url(#shadow); }
+      .section-title { fill: #0f172a; font: 700 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .group-title { fill: #1e3a8a; font: 600 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .node-title { fill: #0f172a; font: 600 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-anchor: middle; }
+      .node-detail { fill: #475569; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-anchor: middle; }
+      .edge { fill: none; stroke: #475569; stroke-width: 2.5; marker-end: url(#arrow); }
+      .edge-both { fill: none; stroke: #475569; stroke-width: 2.5; marker-start: url(#arrow); marker-end: url(#arrow); }
+      .edge-label { fill: #334155; font: 600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-anchor: middle; }
+      .label-bg { fill: #ffffff; stroke: #e2e8f0; }
+    </style>
+  </defs>
+
+  <rect class="canvas" x="1" y="1" width="998" height="678" rx="20"/>
+
+  <rect class="section" x="25" y="25" width="445" height="630" rx="18"/>
+  <text class="section-title" x="50" y="62">Computer vision</text>
+
+  <rect class="node" x="145" y="82" width="205" height="64" rx="12"/>
+  <text class="node-title" x="247.5" y="120">Camera Module 3</text>
+
+  <rect class="group" x="75" y="172" width="345" height="440" rx="16"/>
+  <text class="group-title" x="98" y="205">Raspberry Pi 5</text>
+
+  <rect class="node" x="125" y="228" width="245" height="76" rx="12"/>
+  <text class="node-title" x="247.5" y="258">OpenCV</text>
+  <text class="node-detail" x="247.5" y="282">square detection</text>
+
+  <rect class="node" x="125" y="352" width="245" height="76" rx="12"/>
+  <text class="node-title" x="247.5" y="382">State machine</text>
+  <text class="node-detail" x="247.5" y="406">response selection</text>
+
+  <rect class="node" x="125" y="476" width="245" height="76" rx="12"/>
+  <text class="node-title" x="247.5" y="506">FastAPI</text>
+  <text class="node-detail" x="247.5" y="530">telemetry and video</text>
+
+  <path class="edge" d="M247.5 146 V228"/>
+  <rect class="label-bg" x="264" y="174" width="54" height="25" rx="6"/>
+  <text class="edge-label" x="291" y="192">video</text>
+  <path class="edge" d="M247.5 304 V352"/>
+  <path class="edge" d="M247.5 428 V476"/>
+  <path class="edge" d="M125 272 H99 V514 H125"/>
+
+  <rect class="section" x="530" y="25" width="445" height="630" rx="18"/>
+  <text class="section-title" x="555" y="62">Interface and UAV bench</text>
+
+  <rect class="node" x="650" y="82" width="205" height="70" rx="12"/>
+  <text class="node-title" x="752.5" y="123">React Dashboard</text>
+
+  <rect class="group" x="580" y="188" width="345" height="424" rx="16"/>
+  <text class="group-title" x="603" y="221">UAV bench</text>
+
+  <rect class="node" x="630" y="240" width="245" height="76" rx="12"/>
+  <text class="node-title" x="752.5" y="269">SpeedyBee F405 V4</text>
+  <text class="node-detail" x="752.5" y="293">Betaflight</text>
+
+  <rect class="node" x="630" y="364" width="245" height="76" rx="12"/>
+  <text class="node-title" x="752.5" y="393">SpeedyBee BLS 55A</text>
+  <text class="node-detail" x="752.5" y="417">4-in-1 ESC</text>
+
+  <rect class="node" x="630" y="488" width="245" height="76" rx="12"/>
+  <text class="node-title" x="752.5" y="532">4 × motors</text>
+
+  <path class="edge" d="M752.5 316 V364"/>
+  <path class="edge" d="M752.5 440 V488"/>
+
+  <path class="edge-both" d="M370 495 H490 V117 H650"/>
+  <rect class="label-bg" x="532" y="80" width="104" height="25" rx="6"/>
+  <text class="edge-label" x="584" y="98">HTTP / WS</text>
+
+  <path class="edge-both" d="M370 533 H510 V278 H630"/>
+  <rect class="label-bg" x="528" y="230" width="90" height="25" rx="6"/>
+  <text class="edge-label" x="573" y="248">UART / MSP</text>
+</svg>
